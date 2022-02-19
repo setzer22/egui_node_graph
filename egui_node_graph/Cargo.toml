@@ -1,0 +1,22 @@
+[package]
+name = "egui_node_graph"
+description = "A helper library to create interactive node graphs using egui"
+homepage = "https://github.com/setzer22/egui_node_graph"
+repository = "https://github.com/setzer22/egui_node_graph"
+license = "MIT"
+version = "0.1.0"
+keywords = ["ui", "egui", "graph", "node"]
+authors = ["setzer22"]
+edition = "2021"
+readme = "../README.md"
+workspace = ".."
+
+[features]
+persistence = ["serde", "slotmap/serde", "smallvec/serde"]
+
+[dependencies]
+egui = { version = "0.16" }
+slotmap = { version = "1.0" }
+smallvec = { version = "1.7.0" }
+serde = { version = "1.0", optional = true, features = ["derive"] }
+thiserror = "1.0"

@@ -1,9 +1,9 @@
 use std::marker::PhantomData;
 
-use super::*;
+use crate::{color_hex_utils::*, Graph, Node, NodeId};
+
 use egui::*;
 
-#[derive(Default)]
 pub struct NodeFinder<NodeKind> {
     query: String,
     /// Reset every frame. When set, the node finder will be moved at that position
@@ -14,25 +14,55 @@ pub struct NodeFinder<NodeKind> {
 
 pub trait NodeKindIter {
     type Item;
-    fn all_kinds<'a>() -> Box<dyn Iterator<Item=&'a Self::Item>>;
+    fn all_kinds(&self) -> Box<dyn Iterator<Item = &Self::Item> + '_>;
 }
 
-impl<NodeKind> NodeFinder<NodeKind> {
+pub trait NodeKindTrait: Clone {
+    type NodeData;
+    type DataType;
+    type ValueType;
+
+    /// Returns a descriptive name for the node kind, used in the node finder.
+    fn node_finder_label(&self) -> &str;
+
+    /// Returns a descriptive name for the node kind, used in the graph.
+    fn node_graph_label(&self) -> String;
+
+    /// Returns the user data for this node kind.
+    fn user_data(&self) -> Self::NodeData;
+
+    /// This function is run when this node kind gets added to the graph. The
+    /// node will be empty by default, and this function can be used to fill its
+    /// parameters.
+    fn build_node(
+        &self,
+        graph: &mut Graph<Self::NodeData, Self::DataType, Self::ValueType>,
+        node_id: NodeId,
+    );
+}
+
+impl<NodeKind, NodeData> NodeFinder<NodeKind>
+where
+    NodeKind: NodeKindTrait<NodeData = NodeData>,
+{
     pub fn new_at(pos: Pos2) -> Self {
         NodeFinder {
+            query: "".into(),
             position: Some(pos),
             just_spawned: true,
             _phantom: Default::default(),
-            ..Default::default()
         }
     }
 
     /// Shows the node selector panel with a search bar. Returns whether a node
     /// archetype was selected and, in that case, the finder should be hidden on
     /// the next frame.
-    pub fn show(&mut self, ui: &mut Ui, all_kinds: impl NodeKindIter<Item=NodeKind>) -> Option<NodeKind> {
+    pub fn show(
+        &mut self,
+        ui: &mut Ui,
+        all_kinds: impl NodeKindIter<Item = NodeKind>,
+    ) -> Option<NodeKind> {
         let background_color = color_from_hex("#3f3f3f").unwrap();
-        let _titlebar_color = background_color.linear_multiply(0.8);
         let text_color = color_from_hex("#fefefe").unwrap();
 
         ui.visuals_mut().widgets.noninteractive.fg_stroke = Stroke::new(2.0, text_color);
@@ -54,15 +84,15 @@ impl<NodeKind> NodeFinder<NodeKind> {
                 let mut query_submit = resp.lost_focus() && ui.input().key_down(Key::Enter);
 
                 Frame::default().margin(vec2(10.0, 10.0)).show(ui, |ui| {
-                    for archetype in all_kinds.all_kinds() {
-                        let archetype_name = archetype.type_label();
-                        if archetype_name.contains(self.query.as_str()) {
+                    for kind in all_kinds.all_kinds() {
+                        let kind_name = kind.node_finder_label();
+                        if kind_name.contains(self.query.as_str()) {
                             if query_submit {
-                                submitted_archetype = Some(archetype);
+                                submitted_archetype = Some(kind);
                                 query_submit = false;
                             }
-                            if ui.selectable_label(false, archetype_name).clicked() {
-                                submitted_archetype = Some(archetype);
+                            if ui.selectable_label(false, kind_name).clicked() {
+                                submitted_archetype = Some(kind);
                             }
                         }
                     }
@@ -70,6 +100,6 @@ impl<NodeKind> NodeFinder<NodeKind> {
             });
         });
 
-        submitted_archetype
+        submitted_archetype.cloned()
     }
 }

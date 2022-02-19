@@ -1,7 +1,7 @@
 use super::*;
 
 #[cfg(feature = "persistence")]
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Copy, Clone)]
 #[cfg_attr(feature = "persistence", derive(Serialize, Deserialize))]
@@ -10,7 +10,7 @@ pub struct PanZoom {
     pub zoom: f32,
 }
 
-pub struct GraphEditorState<NodeData, DataType, ValueType> {
+pub struct GraphEditorState<NodeData, DataType, ValueType, NodeKind> {
     pub graph: Graph<NodeData, DataType, ValueType>,
     /// Nodes are drawn in this order. Draw order is important because nodes
     /// that are drawn last are on top.
@@ -27,7 +27,7 @@ pub struct GraphEditorState<NodeData, DataType, ValueType> {
     /// The position of each node.
     pub node_positions: SecondaryMap<NodeId, egui::Pos2>,
     /// The node finder is used to create new nodes.
-    pub node_finder: Option<NodeFinder>,
+    pub node_finder: Option<NodeFinder<NodeKind>>,
     /// When this option is set by the UI, the side effect encoded by the node
     /// will be executed at the start of the next frame.
     pub run_side_effect: Option<NodeId>,
@@ -35,7 +35,9 @@ pub struct GraphEditorState<NodeData, DataType, ValueType> {
     pub pan_zoom: PanZoom,
 }
 
-impl<NodeData, DataType, ValueType> GraphEditorState<NodeData, DataType, ValueType> {
+impl<NodeData, DataType, ValueType, NodeKind>
+    GraphEditorState<NodeData, DataType, ValueType, NodeKind>
+{
     pub fn new(default_zoom: f32) -> Self {
         Self {
             graph: Graph::new(),

@@ -1,0 +1,19 @@
+[package]
+name = "egui_node_graph_example"
+version = "0.1.0"
+authors = ["setzer22"]
+edition = "2021"
+rust-version = "1.56"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+eframe = "0.16.0"
+egui_node_graph = { path = "../egui_node_graph" }
+
+[features]
+default = []
+
+[profile.release]
+opt-level = 2 # fast and small wasm
