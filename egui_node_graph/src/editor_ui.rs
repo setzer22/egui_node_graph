@@ -9,8 +9,6 @@ use egui::*;
 
 pub type PortLocations = std::collections::HashMap<AnyParameterId, Pos2>;
 
-pub trait UserResponseTrait: Clone + Copy + std::fmt::Debug + PartialEq + Eq {}
-
 /// Nodes communicate certain events to the parent graph when drawn. There is
 /// one special `User` variant which can be used by users as the return value
 /// when executing some custom actions in the UI of the node.
@@ -43,52 +41,20 @@ pub struct GraphNodeWidget<'a, NodeData, DataType, ValueType> {
     pub pan: egui::Vec2,
 }
 
-pub trait InputParamWidget {
-    fn value_widget(&mut self, param_name: &str, ui: &mut Ui);
-}
-
-pub trait DataTypeTrait: PartialEq + Eq {
-    // The associated port color of this datatype
-    fn data_type_color(&self) -> egui::Color32;
-
-    // The name of this datatype
-    fn name(&self) -> &str;
-}
-
-pub trait NodeDataTrait
-where
-    Self: Sized,
-{
-    type Response;
-    type UserState;
-
-    /// Additional UI elements to draw in the nodes, after the parameters.
-    fn bottom_ui<DataType, ValueType>(
-        &self,
-        ui: &mut Ui,
-        node_id: NodeId,
-        graph: &Graph<Self, DataType, ValueType>,
-        user_state: &Self::UserState,
-
-    ) -> Vec<NodeResponse<Self::Response>>
-    where
-        Self::Response: UserResponseTrait;
-}
-
-impl<NodeData, DataType, ValueType, NodeKind, UserResponse, UserState>
-    GraphEditorState<NodeData, DataType, ValueType, NodeKind, UserState>
+impl<NodeData, DataType, ValueType, NodeTemplate, UserResponse, UserState>
+    GraphEditorState<NodeData, DataType, ValueType, NodeTemplate, UserState>
 where
     NodeData: NodeDataTrait<Response = UserResponse, UserState = UserState>,
     UserResponse: UserResponseTrait,
-    ValueType: InputParamWidget,
-    NodeKind: NodeKindTrait<NodeData = NodeData, DataType = DataType, ValueType = ValueType>,
+    ValueType: WidgetValueTrait,
+    NodeTemplate: NodeTemplateTrait<NodeData = NodeData, DataType = DataType, ValueType = ValueType>,
     DataType: DataTypeTrait,
 {
     #[must_use]
     pub fn draw_graph_editor(
         &mut self,
         ctx: &CtxRef,
-        all_kinds: impl NodeKindIter<Item = NodeKind>,
+        all_kinds: impl NodeTemplateIter<Item = NodeTemplate>,
     ) -> GraphResponse<UserResponse> {
         let mouse = &ctx.input().pointer;
         let cursor_pos = mouse.hover_pos().unwrap_or(Pos2::ZERO);
@@ -277,7 +243,7 @@ impl<'a, NodeData, DataType, ValueType, UserResponse, UserState>
 where
     NodeData: NodeDataTrait<Response = UserResponse, UserState = UserState>,
     UserResponse: UserResponseTrait,
-    ValueType: InputParamWidget,
+    ValueType: WidgetValueTrait,
     DataType: DataTypeTrait,
 {
     pub const MAX_NODE_SIZE: [f32; 2] = [200.0, 200.0];

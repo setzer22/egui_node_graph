@@ -1,49 +1,20 @@
 use std::marker::PhantomData;
 
-use crate::{color_hex_utils::*, Graph, NodeId};
+use crate::{color_hex_utils::*, NodeTemplateIter, NodeTemplateTrait};
 
 use egui::*;
 
-pub struct NodeFinder<NodeKind> {
-    query: String,
+pub struct NodeFinder<NodeTemplate> {
+    pub query: String,
     /// Reset every frame. When set, the node finder will be moved at that position
     pub position: Option<Pos2>,
     pub just_spawned: bool,
-    _phantom: PhantomData<NodeKind>,
+    _phantom: PhantomData<NodeTemplate>,
 }
 
-pub trait NodeKindIter {
-    type Item;
-    fn all_kinds(&self) -> Box<dyn Iterator<Item = &Self::Item> + '_>;
-}
-
-pub trait NodeKindTrait: Clone {
-    type NodeData;
-    type DataType;
-    type ValueType;
-
-    /// Returns a descriptive name for the node kind, used in the node finder.
-    fn node_finder_label(&self) -> &str;
-
-    /// Returns a descriptive name for the node kind, used in the graph.
-    fn node_graph_label(&self) -> String;
-
-    /// Returns the user data for this node kind.
-    fn user_data(&self) -> Self::NodeData;
-
-    /// This function is run when this node kind gets added to the graph. The
-    /// node will be empty by default, and this function can be used to fill its
-    /// parameters.
-    fn build_node(
-        &self,
-        graph: &mut Graph<Self::NodeData, Self::DataType, Self::ValueType>,
-        node_id: NodeId,
-    );
-}
-
-impl<NodeKind, NodeData> NodeFinder<NodeKind>
+impl<NodeTemplate, NodeData> NodeFinder<NodeTemplate>
 where
-    NodeKind: NodeKindTrait<NodeData = NodeData>,
+    NodeTemplate: NodeTemplateTrait<NodeData = NodeData>,
 {
     pub fn new_at(pos: Pos2) -> Self {
         NodeFinder {
@@ -60,8 +31,8 @@ where
     pub fn show(
         &mut self,
         ui: &mut Ui,
-        all_kinds: impl NodeKindIter<Item = NodeKind>,
-    ) -> Option<NodeKind> {
+        all_kinds: impl NodeTemplateIter<Item = NodeTemplate>,
+    ) -> Option<NodeTemplate> {
         let background_color = color_from_hex("#3f3f3f").unwrap();
         let text_color = color_from_hex("#fefefe").unwrap();
 

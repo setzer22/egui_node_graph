@@ -10,7 +10,7 @@ pub struct PanZoom {
     pub zoom: f32,
 }
 
-pub struct GraphEditorState<NodeData, DataType, ValueType, NodeKind, UserState> {
+pub struct GraphEditorState<NodeData, DataType, ValueType, NodeTemplate, UserState> {
     pub graph: Graph<NodeData, DataType, ValueType>,
     /// Nodes are drawn in this order. Draw order is important because nodes
     /// that are drawn last are on top.
@@ -24,7 +24,7 @@ pub struct GraphEditorState<NodeData, DataType, ValueType, NodeKind, UserState> 
     /// The position of each node.
     pub node_positions: SecondaryMap<NodeId, egui::Pos2>,
     /// The node finder is used to create new nodes.
-    pub node_finder: Option<NodeFinder<NodeKind>>,
+    pub node_finder: Option<NodeFinder<NodeTemplate>>,
     /// The panning of the graph viewport.
     pub pan_zoom: PanZoom,
     pub user_state: UserState,

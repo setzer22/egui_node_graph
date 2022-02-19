@@ -32,11 +32,11 @@ pub enum MyValueType {
     Scalar { value: f32 },
 }
 
-/// NodeKind is a mechanism to define node "templates". It's what the graph will
-/// display in the "new node" popup. The user code needs to tell the library how
-/// to convert a NodeKind into a Node.
+/// NodeTemplate is a mechanism to define node templates. It's what the graph
+/// will display in the "new node" popup. The user code needs to tell the
+/// library how to convert a NodeTemplate into a Node.
 #[derive(Clone, Copy)]
-pub enum MyNodeKind {
+pub enum MyNodeTemplate {
     AddScalar,
     SubtractScalar,
     VectorTimesScalar,
@@ -82,17 +82,17 @@ impl DataTypeTrait for MyDataType {
 
 // A trait for the node kinds, which tells the library how to build new nodes
 // from the templates in the node finder
-impl NodeKindTrait for MyNodeKind {
+impl NodeTemplateTrait for MyNodeTemplate {
     type NodeData = MyNodeData;
     type DataType = MyDataType;
     type ValueType = MyValueType;
 
     fn node_finder_label(&self) -> &str {
         match self {
-            MyNodeKind::AddScalar => "Scalar add",
-            MyNodeKind::SubtractScalar => "Scalar subtract",
-            MyNodeKind::VectorTimesScalar => "Vector times scalar",
-            MyNodeKind::AddVector => "Vector subtract",
+            MyNodeTemplate::AddScalar => "Scalar add",
+            MyNodeTemplate::SubtractScalar => "Scalar subtract",
+            MyNodeTemplate::VectorTimesScalar => "Vector times scalar",
+            MyNodeTemplate::AddVector => "Vector subtract",
         }
     }
 
@@ -151,7 +151,7 @@ impl NodeKindTrait for MyNodeKind {
         }
 
         match self {
-            MyNodeKind::AddScalar => {
+            MyNodeTemplate::AddScalar => {
                 // The first input param doesn't use the macro so we can comment
                 // it in more detail.
                 graph.add_input_param(
@@ -172,17 +172,17 @@ impl NodeKindTrait for MyNodeKind {
                 input!(scalar "B");
                 output!(scalar "out");
             }
-            MyNodeKind::SubtractScalar => {
+            MyNodeTemplate::SubtractScalar => {
                 input!(scalar "A");
                 input!(scalar "B");
                 output!(scalar "out");
             }
-            MyNodeKind::VectorTimesScalar => {
+            MyNodeTemplate::VectorTimesScalar => {
                 input!(scalar "scalar");
                 input!(vector "vector");
                 output!(vector "out");
             }
-            MyNodeKind::AddVector => {
+            MyNodeTemplate::AddVector => {
                 input!(vector "v1");
                 input!(vector "v2");
                 output!(vector "out");
@@ -191,9 +191,9 @@ impl NodeKindTrait for MyNodeKind {
     }
 }
 
-pub struct AllMyNodeKinds;
-impl NodeKindIter for AllMyNodeKinds {
-    type Item = MyNodeKind;
+pub struct AllMyNodeTemplates;
+impl NodeTemplateIter for AllMyNodeTemplates {
+    type Item = MyNodeTemplate;
 
     fn all_kinds(&self) -> Box<dyn Iterator<Item = &Self::Item> + '_> {
         // This function must return a list of node kinds, which the node finder
@@ -204,17 +204,17 @@ impl NodeKindIter for AllMyNodeKinds {
         // over return parameters, so you can't return an iterator.
         Box::new(
             [
-                MyNodeKind::AddScalar,
-                MyNodeKind::SubtractScalar,
-                MyNodeKind::VectorTimesScalar,
-                MyNodeKind::AddVector,
+                MyNodeTemplate::AddScalar,
+                MyNodeTemplate::SubtractScalar,
+                MyNodeTemplate::VectorTimesScalar,
+                MyNodeTemplate::AddVector,
             ]
             .iter(),
         )
     }
 }
 
-impl InputParamWidget for MyValueType {
+impl WidgetValueTrait for MyValueType {
     fn value_widget(&mut self, param_name: &str, ui: &mut egui::Ui) {
         // This trait is used to tell the library which UI to display for the
         // inline parameter widgets.
@@ -293,7 +293,7 @@ impl NodeDataTrait for MyNodeData {
 pub struct NodeGraphExample {
     // The `GraphEditorState` is the top-level object. You "register" all your
     // custom types by specifying it as its generic parameters.
-    state: GraphEditorState<MyNodeData, MyDataType, MyValueType, MyNodeKind, MyGraphState>,
+    state: GraphEditorState<MyNodeData, MyDataType, MyValueType, MyNodeTemplate, MyGraphState>,
 }
 
 impl Default for NodeGraphExample {
@@ -312,7 +312,7 @@ impl epi::App for NodeGraphExample {
     /// Called each time the UI needs repainting, which may be many times per second.
     /// Put your widgets into a `SidePanel`, `TopPanel`, `CentralPanel`, `Window` or `Area`.
     fn update(&mut self, ctx: &egui::CtxRef, _frame: &epi::Frame) {
-        let graph_response = self.state.draw_graph_editor(ctx, AllMyNodeKinds);
+        let graph_response = self.state.draw_graph_editor(ctx, AllMyNodeTemplates);
         for node_response in graph_response.node_responses {
             // Here, we ignore all other graph events. But you may find
             // some use for them. For example, by playing a sound when a new
