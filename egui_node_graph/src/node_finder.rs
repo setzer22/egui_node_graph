@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use crate::{color_hex_utils::*, Graph, Node, NodeId};
+use crate::{color_hex_utils::*, Graph, NodeId};
 
 use egui::*;
 

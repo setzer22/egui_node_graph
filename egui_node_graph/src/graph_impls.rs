@@ -1,5 +1,3 @@
-use egui::plot::Value;
-
 use super::*;
 
 impl<NodeData, DataType, ValueType> Graph<NodeData, DataType, ValueType> {

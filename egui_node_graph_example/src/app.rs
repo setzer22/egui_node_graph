@@ -43,6 +43,24 @@ pub enum MyNodeKind {
     AddVector,
 }
 
+/// The response type is used to encode side-effects produced when drawing a
+/// node in the graph. Most side-effects (creating new nodes, deleting existing
+/// nodes, handling connections...) are already handled by the library, but this
+/// mechanism allows creating additional side effects from user code.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MyResponse {
+    SetActiveNode(NodeId),
+    ClearActiveNode,
+}
+
+/// The graph 'global' state. This state struct is passed around to the node and
+/// parameter drawing callbacks. The contents of this struct are entirely up to
+/// the user. For this example, we use it to keep track of the 'active' node.
+#[derive(Default)]
+pub struct MyGraphState {
+    pub active_node: Option<NodeId>,
+}
+
 // =========== Then, you need to implement some traits ============
 
 // A trait for the data types, to tell the library how to display them
@@ -220,26 +238,93 @@ impl InputParamWidget for MyValueType {
     }
 }
 
+impl UserResponseTrait for MyResponse {}
+impl NodeDataTrait for MyNodeData {
+    type Response = MyResponse;
+    type UserState = MyGraphState;
+
+    // This method will be called when drawing each node. This allows adding
+    // extra ui elements inside the nodes. In this case, we create an "active"
+    // button which introduces the concept of having an active node in the
+    // graph. This is done entirely from user code with no modifications to the
+    // node graph library.
+    fn bottom_ui<DataType, ValueType>(
+        &self,
+        ui: &mut egui::Ui,
+        node_id: NodeId,
+        _graph: &Graph<MyNodeData, DataType, ValueType>,
+        user_state: &Self::UserState,
+    ) -> Vec<NodeResponse<MyResponse>>
+    where
+        MyResponse: UserResponseTrait,
+    {
+        // This logic is entirely up to the user. In this case, we check if the
+        // current node we're drawing is the active one, by comparing against
+        // the value stored in the global user state, and draw different button
+        // UIs based on that.
+
+        let mut responses = vec![];
+        let is_active = user_state
+            .active_node
+            .map(|id| id == node_id)
+            .unwrap_or(false);
+
+        // Pressing the button will emit a custom user response to either set,
+        // or clear the active node. These responses do nothing by themselves,
+        // the library only makes the responses available to you after the graph
+        // has been drawn. See below at the update method for an example.
+        if !is_active {
+            if ui.button("👁 Set active").clicked() {
+                responses.push(NodeResponse::User(MyResponse::SetActiveNode(node_id)));
+            }
+        } else {
+            let button =
+                egui::Button::new(egui::RichText::new("👁 Active").color(egui::Color32::BLACK))
+                    .fill(egui::Color32::GOLD);
+            if ui.add(button).clicked() {
+                responses.push(NodeResponse::User(MyResponse::ClearActiveNode));
+            }
+        }
+
+        responses
+    }
+}
+
 pub struct NodeGraphExample {
-    state: GraphEditorState<MyNodeData, MyDataType, MyValueType, MyNodeKind>,
+    // The `GraphEditorState` is the top-level object. You "register" all your
+    // custom types by specifying it as its generic parameters.
+    state: GraphEditorState<MyNodeData, MyDataType, MyValueType, MyNodeKind, MyGraphState>,
 }
 
 impl Default for NodeGraphExample {
     fn default() -> Self {
         Self {
-            state: GraphEditorState::new(1.0),
+            state: GraphEditorState::new(1.0, MyGraphState::default()),
         }
     }
 }
 
 impl epi::App for NodeGraphExample {
     fn name(&self) -> &str {
-        "eframe template"
+        "Egui node graph example"
     }
 
     /// Called each time the UI needs repainting, which may be many times per second.
     /// Put your widgets into a `SidePanel`, `TopPanel`, `CentralPanel`, `Window` or `Area`.
-    fn update(&mut self, ctx: &egui::CtxRef, frame: &epi::Frame) {
-        self.state.draw_graph_editor(ctx, AllMyNodeKinds);
+    fn update(&mut self, ctx: &egui::CtxRef, _frame: &epi::Frame) {
+        let graph_response = self.state.draw_graph_editor(ctx, AllMyNodeKinds);
+        for node_response in graph_response.node_responses {
+            // Here, we ignore all other graph events. But you may find
+            // some use for them. For example, by playing a sound when a new
+            // connection is created
+            if let NodeResponse::User(user_event) = node_response {
+                match user_event {
+                    MyResponse::SetActiveNode(node) => {
+                        self.state.user_state.active_node = Some(node)
+                    }
+                    MyResponse::ClearActiveNode => self.state.user_state.active_node = None,
+                }
+            }
+        }
     }
 }

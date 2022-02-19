@@ -9,25 +9,36 @@ use egui::*;
 
 pub type PortLocations = std::collections::HashMap<AnyParameterId, Pos2>;
 
-pub enum DrawGraphNodeResponse {
+pub trait UserResponseTrait: Clone + Copy + std::fmt::Debug + PartialEq + Eq {}
+
+/// Nodes communicate certain events to the parent graph when drawn. There is
+/// one special `User` variant which can be used by users as the return value
+/// when executing some custom actions in the UI of the node.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NodeResponse<UserResponse: UserResponseTrait> {
     ConnectEventStarted(NodeId, AnyParameterId),
     ConnectEventEnded(AnyParameterId),
-    SetActiveNode(NodeId),
     SelectNode(NodeId),
-    RunNodeSideEffect(NodeId),
-    ClearActiveNode,
     DeleteNode(NodeId),
     DisconnectEvent(InputId),
     /// Emitted when a node is interacted with, and should be raised
     RaiseNode(NodeId),
+    User(UserResponse),
 }
+
+/// The return value of [`draw_graph_editor`]. This value can be used to make
+/// user code react to specific events that happened when drawing the graph.
+#[derive(Clone, Debug)]
+pub struct GraphResponse<UserResponse: UserResponseTrait> {
+    pub node_responses: Vec<NodeResponse<UserResponse>>,
+}
+
 pub struct GraphNodeWidget<'a, NodeData, DataType, ValueType> {
     pub position: &'a mut Pos2,
     pub graph: &'a mut Graph<NodeData, DataType, ValueType>,
     pub port_locations: &'a mut PortLocations,
     pub node_id: NodeId,
     pub ongoing_drag: Option<(NodeId, AnyParameterId)>,
-    pub active: bool,
     pub selected: bool,
     pub pan: egui::Vec2,
 }
@@ -44,18 +55,41 @@ pub trait DataTypeTrait: PartialEq + Eq {
     fn name(&self) -> &str;
 }
 
-impl<NodeData, DataType, ValueType, NodeKind>
-    GraphEditorState<NodeData, DataType, ValueType, NodeKind>
+pub trait NodeDataTrait
 where
+    Self: Sized,
+{
+    type Response;
+    type UserState;
+
+    /// Additional UI elements to draw in the nodes, after the parameters.
+    fn bottom_ui<DataType, ValueType>(
+        &self,
+        ui: &mut Ui,
+        node_id: NodeId,
+        graph: &Graph<Self, DataType, ValueType>,
+        user_state: &Self::UserState,
+
+    ) -> Vec<NodeResponse<Self::Response>>
+    where
+        Self::Response: UserResponseTrait;
+}
+
+impl<NodeData, DataType, ValueType, NodeKind, UserResponse, UserState>
+    GraphEditorState<NodeData, DataType, ValueType, NodeKind, UserState>
+where
+    NodeData: NodeDataTrait<Response = UserResponse, UserState = UserState>,
+    UserResponse: UserResponseTrait,
     ValueType: InputParamWidget,
     NodeKind: NodeKindTrait<NodeData = NodeData, DataType = DataType, ValueType = ValueType>,
     DataType: DataTypeTrait,
 {
+    #[must_use]
     pub fn draw_graph_editor(
         &mut self,
         ctx: &CtxRef,
         all_kinds: impl NodeKindIter<Item = NodeKind>,
-    ) {
+    ) -> GraphResponse<UserResponse> {
         let mouse = &ctx.input().pointer;
         let cursor_pos = mouse.hover_pos().unwrap_or(Pos2::ZERO);
 
@@ -64,7 +98,7 @@ where
 
         // The responses returned from node drawing have side effects that are best
         // executed at the end of this function.
-        let mut delayed_responses: Vec<DrawGraphNodeResponse> = vec![];
+        let mut delayed_responses: Vec<NodeResponse<UserResponse>> = vec![];
 
         // Used to detect when the background was clicked, to dismiss certain selfs
         let mut click_on_background = false;
@@ -85,17 +119,13 @@ where
                     port_locations: &mut port_locations,
                     node_id,
                     ongoing_drag: self.connection_in_progress,
-                    active: self
-                        .active_node
-                        .map(|active| active == node_id)
-                        .unwrap_or(false),
                     selected: self
                         .selected_node
                         .map(|selected| selected == node_id)
                         .unwrap_or(false),
                     pan: self.pan_zoom.pan,
                 }
-                .show(ui);
+                .show(ui, &self.user_state);
 
                 // Actions executed later
                 delayed_responses.extend(responses);
@@ -153,12 +183,12 @@ where
 
         /* Handle responses from drawing nodes */
 
-        for response in delayed_responses {
+        for response in delayed_responses.iter().copied() {
             match response {
-                DrawGraphNodeResponse::ConnectEventStarted(node_id, port) => {
+                NodeResponse::ConnectEventStarted(node_id, port) => {
                     self.connection_in_progress = Some((node_id, port));
                 }
-                DrawGraphNodeResponse::ConnectEventEnded(locator) => {
+                NodeResponse::ConnectEventEnded(locator) => {
                     let in_out = match (
                         self.connection_in_progress
                             .map(|(_node, param)| param)
@@ -177,34 +207,19 @@ where
                         self.graph.add_connection(output, input)
                     }
                 }
-                DrawGraphNodeResponse::SetActiveNode(node_id) => {
-                    self.active_node = Some(node_id);
-                }
-                DrawGraphNodeResponse::SelectNode(node_id) => {
+                NodeResponse::SelectNode(node_id) => {
                     self.selected_node = Some(node_id);
                 }
-                DrawGraphNodeResponse::ClearActiveNode => {
-                    self.active_node = None;
-                }
-                DrawGraphNodeResponse::RunNodeSideEffect(node_id) => {
-                    self.run_side_effect = Some(node_id);
-                }
-                DrawGraphNodeResponse::DeleteNode(node_id) => {
+                NodeResponse::DeleteNode(node_id) => {
                     self.graph.remove_node(node_id);
                     self.node_positions.remove(node_id);
                     // Make sure to not leave references to old nodes hanging
-                    if self.active_node.map(|x| x == node_id).unwrap_or(false) {
-                        self.active_node = None;
-                    }
                     if self.selected_node.map(|x| x == node_id).unwrap_or(false) {
                         self.selected_node = None;
                     }
-                    if self.run_side_effect.map(|x| x == node_id).unwrap_or(false) {
-                        self.run_side_effect = None;
-                    }
                     self.node_order.retain(|id| *id != node_id);
                 }
-                DrawGraphNodeResponse::DisconnectEvent(input_id) => {
+                NodeResponse::DisconnectEvent(input_id) => {
                     let corresp_output = self
                         .graph
                         .connection(input_id)
@@ -214,7 +229,7 @@ where
                     self.connection_in_progress =
                         Some((other_node, AnyParameterId::Output(corresp_output)));
                 }
-                DrawGraphNodeResponse::RaiseNode(node_id) => {
+                NodeResponse::RaiseNode(node_id) => {
                     let old_pos = self
                         .node_order
                         .iter()
@@ -222,6 +237,9 @@ where
                         .expect("Node to be raised should be in `node_order`");
                     self.node_order.remove(old_pos);
                     self.node_order.push(node_id);
+                }
+                NodeResponse::User(_) => {
+                    // These are handled by the user code.
                 }
             }
         }
@@ -247,34 +265,42 @@ where
             self.selected_node = None;
             self.node_finder = None;
         }
+
+        GraphResponse {
+            node_responses: delayed_responses,
+        }
     }
 }
 
-impl<'a, NodeData, DataType, ValueType> GraphNodeWidget<'a, NodeData, DataType, ValueType>
+impl<'a, NodeData, DataType, ValueType, UserResponse, UserState>
+    GraphNodeWidget<'a, NodeData, DataType, ValueType>
 where
+    NodeData: NodeDataTrait<Response = UserResponse, UserState = UserState>,
+    UserResponse: UserResponseTrait,
     ValueType: InputParamWidget,
     DataType: DataTypeTrait,
 {
     pub const MAX_NODE_SIZE: [f32; 2] = [200.0, 200.0];
 
-    pub fn show(self, ui: &mut Ui) -> Vec<DrawGraphNodeResponse> {
+    pub fn show(
+        self,
+        ui: &mut Ui,
+        user_state: &UserState,
+    ) -> Vec<NodeResponse<UserResponse>> {
         let mut child_ui = ui.child_ui_with_id_source(
             Rect::from_min_size(*self.position + self.pan, Self::MAX_NODE_SIZE.into()),
             Layout::default(),
             self.node_id,
         );
 
-        Self::show_graph_node(self, &mut child_ui)
+        Self::show_graph_node(self, &mut child_ui, user_state)
     }
 
     /// Draws this node. Also fills in the list of port locations with all of its ports.
-    /// Returns a response showing whether a drag event was started.
-    /// Parameters:
-    /// - **ongoing_drag**: Is there a port drag event currently going on?
-    fn show_graph_node(self, ui: &mut Ui) -> Vec<DrawGraphNodeResponse> {
+    /// Returns responses indicating multiple events.
+    fn show_graph_node(self, ui: &mut Ui, user_state: &UserState) -> Vec<NodeResponse<UserResponse>> {
         let margin = egui::vec2(15.0, 5.0);
-        let _field_separation = 5.0;
-        let mut responses = Vec::<DrawGraphNodeResponse>::new();
+        let mut responses = Vec::new();
 
         let background_color = color_from_hex("#3f3f3f").unwrap();
         let titlebar_color = background_color.lighten(0.8);
@@ -333,33 +359,12 @@ where
                 output_port_heights.push((height_before + height_after) / 2.0);
             }
 
-            /* TODO: Restore button row
-            // Button row
-            ui.horizontal(|ui| {
-                // Show 'Enable' button for nodes that output a mesh
-                if self.graph[self.node_id].can_be_enabled(self.graph) {
-                    ui.horizontal(|ui| {
-                        if !self.active {
-                            if ui.button("👁 Set active").clicked() {
-                                responses.push(DrawGraphNodeResponse::SetActiveNode(self.node_id));
-                            }
-                        } else {
-                            let button = egui::Button::new(
-                                RichText::new("👁 Active").color(egui::Color32::BLACK),
-                            )
-                            .fill(egui::Color32::GOLD);
-                            if ui.add(button).clicked() {
-                                responses.push(DrawGraphNodeResponse::ClearActiveNode);
-                            }
-                        }
-                    });
-                }
-                // Show 'Run' button for executable nodes
-                if self.graph[self.node_id].is_executable() && ui.button("⛭ Run").clicked() {
-                    responses.push(DrawGraphNodeResponse::RunNodeSideEffect(self.node_id));
-                }
-            })
-            */
+            responses.extend(
+                self.graph[self.node_id]
+                    .user_data
+                    .bottom_ui(ui, self.node_id, self.graph, user_state)
+                    .into_iter(),
+            );
         });
 
         // Second pass, iterate again to draw the ports. This happens outside
@@ -370,18 +375,19 @@ where
         let port_right = outer_rect.right();
 
         #[allow(clippy::too_many_arguments)]
-        fn draw_port<NodeData, DataType, ValueType>(
+        fn draw_port<NodeData, DataType, ValueType, UserResponse>(
             ui: &mut Ui,
             graph: &Graph<NodeData, DataType, ValueType>,
             node_id: NodeId,
             port_pos: Pos2,
-            responses: &mut Vec<DrawGraphNodeResponse>,
+            responses: &mut Vec<NodeResponse<UserResponse>>,
             param_id: AnyParameterId,
             port_locations: &mut PortLocations,
             ongoing_drag: Option<(NodeId, AnyParameterId)>,
             is_connected_input: bool,
         ) where
             DataType: DataTypeTrait,
+            UserResponse: UserResponseTrait,
         {
             let port_type = graph.any_param_type(param_id).unwrap();
 
@@ -404,13 +410,9 @@ where
 
             if resp.drag_started() {
                 if is_connected_input {
-                    responses.push(DrawGraphNodeResponse::DisconnectEvent(
-                        param_id.assume_input(),
-                    ));
+                    responses.push(NodeResponse::DisconnectEvent(param_id.assume_input()));
                 } else {
-                    responses.push(DrawGraphNodeResponse::ConnectEventStarted(
-                        node_id, param_id,
-                    ));
+                    responses.push(NodeResponse::ConnectEventStarted(node_id, param_id));
                 }
             }
 
@@ -421,7 +423,7 @@ where
                         && resp.hovered()
                         && ui.input().pointer.any_released()
                     {
-                        responses.push(DrawGraphNodeResponse::ConnectEventEnded(param_id));
+                        responses.push(NodeResponse::ConnectEventEnded(param_id));
                     }
                 }
             }
@@ -540,7 +542,7 @@ where
 
         // Titlebar buttons
         if Self::close_button(ui, outer_rect).clicked() {
-            responses.push(DrawGraphNodeResponse::DeleteNode(self.node_id));
+            responses.push(NodeResponse::DeleteNode(self.node_id));
         };
 
         let window_response = ui.interact(
@@ -552,7 +554,7 @@ where
         // Movement
         *self.position += window_response.drag_delta();
         if window_response.drag_delta().length_sq() > 0.0 {
-            responses.push(DrawGraphNodeResponse::RaiseNode(self.node_id));
+            responses.push(NodeResponse::RaiseNode(self.node_id));
         }
 
         // Node selection
@@ -560,8 +562,8 @@ where
         // HACK: Only set the select response when no other response is active.
         // This prevents some issues.
         if responses.is_empty() && window_response.clicked_by(PointerButton::Primary) {
-            responses.push(DrawGraphNodeResponse::SelectNode(self.node_id));
-            responses.push(DrawGraphNodeResponse::RaiseNode(self.node_id));
+            responses.push(NodeResponse::SelectNode(self.node_id));
+            responses.push(NodeResponse::RaiseNode(self.node_id));
         }
 
         responses

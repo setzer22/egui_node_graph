@@ -10,7 +10,7 @@ pub struct PanZoom {
     pub zoom: f32,
 }
 
-pub struct GraphEditorState<NodeData, DataType, ValueType, NodeKind> {
+pub struct GraphEditorState<NodeData, DataType, ValueType, NodeKind, UserState> {
     pub graph: Graph<NodeData, DataType, ValueType>,
     /// Nodes are drawn in this order. Draw order is important because nodes
     /// that are drawn last are on top.
@@ -18,9 +18,6 @@ pub struct GraphEditorState<NodeData, DataType, ValueType, NodeKind> {
     /// An ongoing connection interaction: The mouse has dragged away from a
     /// port and the user is holding the click
     pub connection_in_progress: Option<(NodeId, AnyParameterId)>,
-    /// The currently active node. A program will be compiled to compute the
-    /// result of this node and constantly updated in real-time.
-    pub active_node: Option<NodeId>,
     /// The currently selected node. Some interface actions depend on the
     /// currently selected node.
     pub selected_node: Option<NodeId>,
@@ -28,30 +25,27 @@ pub struct GraphEditorState<NodeData, DataType, ValueType, NodeKind> {
     pub node_positions: SecondaryMap<NodeId, egui::Pos2>,
     /// The node finder is used to create new nodes.
     pub node_finder: Option<NodeFinder<NodeKind>>,
-    /// When this option is set by the UI, the side effect encoded by the node
-    /// will be executed at the start of the next frame.
-    pub run_side_effect: Option<NodeId>,
     /// The panning of the graph viewport.
     pub pan_zoom: PanZoom,
+    pub user_state: UserState,
 }
 
-impl<NodeData, DataType, ValueType, NodeKind>
-    GraphEditorState<NodeData, DataType, ValueType, NodeKind>
+impl<NodeData, DataType, ValueType, NodeKind, UserState>
+    GraphEditorState<NodeData, DataType, ValueType, NodeKind, UserState>
 {
-    pub fn new(default_zoom: f32) -> Self {
+    pub fn new(default_zoom: f32, user_state: UserState) -> Self {
         Self {
             graph: Graph::new(),
             node_order: Vec::new(),
             connection_in_progress: None,
-            active_node: None,
             selected_node: None,
-            run_side_effect: None,
             node_positions: SecondaryMap::new(),
             node_finder: None,
             pan_zoom: PanZoom {
                 pan: egui::Vec2::ZERO,
                 zoom: default_zoom,
             },
+            user_state,
         }
     }
 }
