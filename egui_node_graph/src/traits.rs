@@ -28,13 +28,17 @@ where
     type Response;
     /// Must be set to the custom user `UserState` type
     type UserState;
+    /// Must be set to the custom user `DataType` type
+    type DataType;
+    /// Must be set to the custom user `ValueType` type
+    type ValueType;
 
     /// Additional UI elements to draw in the nodes, after the parameters.
-    fn bottom_ui<DataType, ValueType>(
+    fn bottom_ui(
         &self,
         ui: &mut egui::Ui,
         node_id: NodeId,
-        graph: &Graph<Self, DataType, ValueType>,
+        graph: &Graph<Self, Self::DataType, Self::ValueType>,
         user_state: &Self::UserState,
     ) -> Vec<NodeResponse<Self::Response>>
     where

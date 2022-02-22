@@ -242,17 +242,19 @@ impl UserResponseTrait for MyResponse {}
 impl NodeDataTrait for MyNodeData {
     type Response = MyResponse;
     type UserState = MyGraphState;
+    type DataType = MyDataType;
+    type ValueType = MyValueType;
 
     // This method will be called when drawing each node. This allows adding
     // extra ui elements inside the nodes. In this case, we create an "active"
     // button which introduces the concept of having an active node in the
     // graph. This is done entirely from user code with no modifications to the
     // node graph library.
-    fn bottom_ui<DataType, ValueType>(
+    fn bottom_ui(
         &self,
         ui: &mut egui::Ui,
         node_id: NodeId,
-        _graph: &Graph<MyNodeData, DataType, ValueType>,
+        _graph: &Graph<MyNodeData, MyDataType, MyValueType>,
         user_state: &Self::UserState,
     ) -> Vec<NodeResponse<MyResponse>>
     where

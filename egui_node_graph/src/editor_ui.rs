@@ -44,10 +44,16 @@ pub struct GraphNodeWidget<'a, NodeData, DataType, ValueType> {
 impl<NodeData, DataType, ValueType, NodeTemplate, UserResponse, UserState>
     GraphEditorState<NodeData, DataType, ValueType, NodeTemplate, UserState>
 where
-    NodeData: NodeDataTrait<Response = UserResponse, UserState = UserState>,
+    NodeData: NodeDataTrait<
+        Response = UserResponse,
+        UserState = UserState,
+        DataType = DataType,
+        ValueType = ValueType,
+    >,
     UserResponse: UserResponseTrait,
     ValueType: WidgetValueTrait,
-    NodeTemplate: NodeTemplateTrait<NodeData = NodeData, DataType = DataType, ValueType = ValueType>,
+    NodeTemplate:
+        NodeTemplateTrait<NodeData = NodeData, DataType = DataType, ValueType = ValueType>,
     DataType: DataTypeTrait,
 {
     #[must_use]
@@ -241,18 +247,19 @@ where
 impl<'a, NodeData, DataType, ValueType, UserResponse, UserState>
     GraphNodeWidget<'a, NodeData, DataType, ValueType>
 where
-    NodeData: NodeDataTrait<Response = UserResponse, UserState = UserState>,
+    NodeData: NodeDataTrait<
+        Response = UserResponse,
+        UserState = UserState,
+        DataType = DataType,
+        ValueType = ValueType,
+    >,
     UserResponse: UserResponseTrait,
     ValueType: WidgetValueTrait,
     DataType: DataTypeTrait,
 {
     pub const MAX_NODE_SIZE: [f32; 2] = [200.0, 200.0];
 
-    pub fn show(
-        self,
-        ui: &mut Ui,
-        user_state: &UserState,
-    ) -> Vec<NodeResponse<UserResponse>> {
+    pub fn show(self, ui: &mut Ui, user_state: &UserState) -> Vec<NodeResponse<UserResponse>> {
         let mut child_ui = ui.child_ui_with_id_source(
             Rect::from_min_size(*self.position + self.pan, Self::MAX_NODE_SIZE.into()),
             Layout::default(),
@@ -264,7 +271,11 @@ where
 
     /// Draws this node. Also fills in the list of port locations with all of its ports.
     /// Returns responses indicating multiple events.
-    fn show_graph_node(self, ui: &mut Ui, user_state: &UserState) -> Vec<NodeResponse<UserResponse>> {
+    fn show_graph_node(
+        self,
+        ui: &mut Ui,
+        user_state: &UserState,
+    ) -> Vec<NodeResponse<UserResponse>> {
         let margin = egui::vec2(15.0, 5.0);
         let mut responses = Vec::new();
 
