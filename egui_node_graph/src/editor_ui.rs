@@ -16,6 +16,7 @@ pub type PortLocations = std::collections::HashMap<AnyParameterId, Pos2>;
 pub enum NodeResponse<UserResponse: UserResponseTrait> {
     ConnectEventStarted(NodeId, AnyParameterId),
     ConnectEventEnded(AnyParameterId),
+    CreatedNode(NodeId),
     SelectNode(NodeId),
     DeleteNode(NodeId),
     DisconnectEvent(InputId),
@@ -126,7 +127,9 @@ where
                     self.node_positions
                         .insert(new_node, cursor_pos - self.pan_zoom.pan);
                     self.node_order.push(new_node);
+
                     should_close_node_finder = true;
+                    delayed_responses.push(NodeResponse::CreatedNode(new_node));
                 }
             });
         }
@@ -178,6 +181,9 @@ where
                     if let Some((input, output)) = in_out {
                         self.graph.add_connection(output, input)
                     }
+                }
+                NodeResponse::CreatedNode(_) => {
+                    //Convenience NodeResponse for users
                 }
                 NodeResponse::SelectNode(node_id) => {
                     self.selected_node = Some(node_id);
