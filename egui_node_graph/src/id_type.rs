@@ -2,6 +2,7 @@ slotmap::new_key_type! { pub struct NodeId; }
 slotmap::new_key_type! { pub struct InputId; }
 slotmap::new_key_type! { pub struct OutputId; }
 
+#[cfg_attr(feature = "persistence", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum AnyParameterId {
     Input(InputId),

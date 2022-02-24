@@ -195,22 +195,16 @@ pub struct AllMyNodeTemplates;
 impl NodeTemplateIter for AllMyNodeTemplates {
     type Item = MyNodeTemplate;
 
-    fn all_kinds(&self) -> Box<dyn Iterator<Item = &Self::Item> + '_> {
+    fn all_kinds(&self) -> Vec<Self::Item> {
         // This function must return a list of node kinds, which the node finder
         // will use to display it to the user. Crates like strum can reduce the
         // boilerplate in enumerating all variants of an enum.
-        //
-        // The Box here is required because traits in Rust cannot be generic
-        // over return parameters, so you can't return an iterator.
-        Box::new(
-            [
-                MyNodeTemplate::AddScalar,
-                MyNodeTemplate::SubtractScalar,
-                MyNodeTemplate::VectorTimesScalar,
-                MyNodeTemplate::AddVector,
-            ]
-            .iter(),
-        )
+        vec![
+            MyNodeTemplate::AddScalar,
+            MyNodeTemplate::SubtractScalar,
+            MyNodeTemplate::VectorTimesScalar,
+            MyNodeTemplate::AddVector,
+        ]
     }
 }
 

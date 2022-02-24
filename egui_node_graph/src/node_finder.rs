@@ -4,6 +4,7 @@ use crate::{color_hex_utils::*, NodeTemplateIter, NodeTemplateTrait};
 
 use egui::*;
 
+#[cfg_attr(feature = "persistence", derive(serde::Serialize, serde::Deserialize))]
 pub struct NodeFinder<NodeTemplate> {
     pub query: String,
     /// Reset every frame. When set, the node finder will be moved at that position
@@ -56,14 +57,13 @@ where
 
                 Frame::default().margin(vec2(10.0, 10.0)).show(ui, |ui| {
                     for kind in all_kinds.all_kinds() {
-                        let kind_name = kind.node_finder_label();
+                        let kind_name = kind.node_finder_label().to_string();
                         if kind_name.contains(self.query.as_str()) {
-                            if query_submit {
-                                submitted_archetype = Some(kind);
-                                query_submit = false;
-                            }
                             if ui.selectable_label(false, kind_name).clicked() {
                                 submitted_archetype = Some(kind);
+                            } else if query_submit {
+                                submitted_archetype = Some(kind);
+                                query_submit = false;
                             }
                         }
                     }
@@ -71,6 +71,6 @@ where
             });
         });
 
-        submitted_archetype.cloned()
+        submitted_archetype
     }
 }

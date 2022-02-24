@@ -50,7 +50,7 @@ where
 /// the node finder.
 pub trait NodeTemplateIter {
     type Item;
-    fn all_kinds(&self) -> Box<dyn Iterator<Item = &Self::Item> + '_>;
+    fn all_kinds(&self) -> Vec<Self::Item>;
 }
 
 /// This trait must be implemented by the `NodeTemplate` generic parameter of
