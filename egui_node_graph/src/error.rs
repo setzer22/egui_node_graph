@@ -6,5 +6,5 @@ pub enum EguiGraphError {
     NoParameterNamed(NodeId, String),
 
     #[error("Parameter {0:?} was not found in the graph.")]
-    InvalidParameterId(AnyParameterId)
+    InvalidParameterId(AnyParameterId),
 }
