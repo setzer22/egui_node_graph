@@ -12,7 +12,7 @@ readme = "../README.md"
 workspace = ".."
 
 [features]
-persistence = ["serde", "slotmap/serde", "smallvec/serde"]
+persistence = ["serde", "slotmap/serde", "smallvec/serde", "egui/persistence"]
 
 [dependencies]
 egui = { version = "0.16" }
