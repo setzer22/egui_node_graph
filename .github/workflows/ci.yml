@@ -3,19 +3,67 @@ on: [push]
 name: CI
 
 jobs:
-  build_and_test:
-    name: Test
+  test:
+    name: cargo test
     runs-on: ubuntu-latest
     steps:
-    - name: Install
-      run: sudo apt install libxcb-composite0-dev
-
+    - run: sudo apt install libxcb-composite0-dev
     - uses: actions-rs/toolchain@v1
       with:
+        profile: minimal
         toolchain: stable
-
     - uses: actions/checkout@v2
-
     - uses: actions-rs/cargo@v1
       with:
         command: test
+        args: --all-features
+
+  fmt:
+    name: cargo fmt
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+    - run: rustup component add rustfmt
+    - uses: actions/checkout@v2
+    - run: sudo apt install libxcb-composite0-dev
+    - uses: actions-rs/cargo@v1
+      with:
+        command: fmt
+        args: --all -- --check
+
+  clippy:
+    name: cargo clippy
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+    - run: rustup component add clippy
+    - run: sudo apt install libxcb-composite0-dev
+    - uses: actions/checkout@v2
+    - uses: actions-rs/cargo@v1
+      with:
+        command: clippy
+        args: --workspace --all-targets --all-features --  -D warnings -W clippy::all
+
+  check:
+    name: cargo check
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+    - run: sudo apt install libxcb-composite0-dev
+    - uses: actions/checkout@v2
+    - uses: actions-rs/cargo@v1
+      with:
+        command: check
+    - uses: actions-rs/cargo@v1
+      with:
+        command: check
+        args: --all-features
