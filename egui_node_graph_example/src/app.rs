@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use eframe::{
     egui::{self, DragValue},
     epi,
@@ -8,8 +10,10 @@ use egui_node_graph::*;
 
 /// The NodeData holds a custom data struct inside each node. It's useful to
 /// store additional information that doesn't live in parameters. For this
-/// simple example we don't really want to store anything.
-pub struct MyNodeData;
+/// example, the node data stores the template (i.e. the "type") of the node.
+pub struct MyNodeData {
+    template: MyNodeTemplate,
+}
 
 /// `DataType`s are what defines the possible range of connections when
 /// attaching two ports together. The graph UI will make sure to not allow
@@ -27,9 +31,30 @@ pub enum MyDataType {
 /// this library makes no attempt to check this consistency. For instance, it is
 /// up to the user code in this example to make sure no parameter is created
 /// with a DataType of Scalar and a ValueType of Vec2.
+#[derive(Copy, Clone, Debug)]
 pub enum MyValueType {
     Vec2 { value: egui::Vec2 },
     Scalar { value: f32 },
+}
+
+impl MyValueType {
+    /// Tries to downcast this value type to a vector
+    pub fn try_to_vec2(self) -> anyhow::Result<egui::Vec2> {
+        if let MyValueType::Vec2 { value } = self {
+            Ok(value)
+        } else {
+            anyhow::bail!("Invalid cast from {:?} to vec2", self)
+        }
+    }
+
+    /// Tries to downcast this value type to a scalar
+    pub fn try_to_scalar(self) -> anyhow::Result<f32> {
+        if let MyValueType::Scalar { value } = self {
+            Ok(value)
+        } else {
+            anyhow::bail!("Invalid cast from {:?} to scalar", self)
+        }
+    }
 }
 
 /// NodeTemplate is a mechanism to define node templates. It's what the graph
@@ -37,10 +62,13 @@ pub enum MyValueType {
 /// library how to convert a NodeTemplate into a Node.
 #[derive(Clone, Copy)]
 pub enum MyNodeTemplate {
+    MakeVector,
+    MakeScalar,
     AddScalar,
     SubtractScalar,
     VectorTimesScalar,
     AddVector,
+    SubtractVector,
 }
 
 /// The response type is used to encode side-effects produced when drawing a
@@ -89,10 +117,13 @@ impl NodeTemplateTrait for MyNodeTemplate {
 
     fn node_finder_label(&self) -> &str {
         match self {
+            MyNodeTemplate::MakeVector => "New vector",
+            MyNodeTemplate::MakeScalar => "New scalar",
             MyNodeTemplate::AddScalar => "Scalar add",
             MyNodeTemplate::SubtractScalar => "Scalar subtract",
+            MyNodeTemplate::AddVector => "Vector add",
+            MyNodeTemplate::SubtractVector => "Vector subtract",
             MyNodeTemplate::VectorTimesScalar => "Vector times scalar",
-            MyNodeTemplate::AddVector => "Vector subtract",
         }
     }
 
@@ -103,7 +134,7 @@ impl NodeTemplateTrait for MyNodeTemplate {
     }
 
     fn user_data(&self) -> Self::NodeData {
-        MyNodeData
+        MyNodeData { template: *self }
     }
 
     fn build_node(
@@ -187,6 +218,20 @@ impl NodeTemplateTrait for MyNodeTemplate {
                 input!(vector "v2");
                 output!(vector "out");
             }
+            MyNodeTemplate::SubtractVector => {
+                input!(vector "v1");
+                input!(vector "v2");
+                output!(vector "out");
+            }
+            MyNodeTemplate::MakeVector => {
+                input!(scalar "x");
+                input!(scalar "y");
+                output!(vector "out");
+            }
+            MyNodeTemplate::MakeScalar => {
+                input!(scalar "value");
+                output!(scalar "out");
+            }
         }
     }
 }
@@ -200,10 +245,13 @@ impl NodeTemplateIter for AllMyNodeTemplates {
         // will use to display it to the user. Crates like strum can reduce the
         // boilerplate in enumerating all variants of an enum.
         vec![
+            MyNodeTemplate::MakeScalar,
+            MyNodeTemplate::MakeVector,
             MyNodeTemplate::AddScalar,
             MyNodeTemplate::SubtractScalar,
-            MyNodeTemplate::VectorTimesScalar,
             MyNodeTemplate::AddVector,
+            MyNodeTemplate::SubtractVector,
+            MyNodeTemplate::VectorTimesScalar,
         ]
     }
 }
@@ -286,10 +334,14 @@ impl NodeDataTrait for MyNodeData {
     }
 }
 
+type MyGraph = Graph<MyNodeData, MyDataType, MyValueType>;
+type MyEditorState =
+    GraphEditorState<MyNodeData, MyDataType, MyValueType, MyNodeTemplate, MyGraphState>;
+
 pub struct NodeGraphExample {
     // The `GraphEditorState` is the top-level object. You "register" all your
     // custom types by specifying it as its generic parameters.
-    state: GraphEditorState<MyNodeData, MyDataType, MyValueType, MyNodeTemplate, MyGraphState>,
+    state: MyEditorState,
 }
 
 impl Default for NodeGraphExample {
@@ -322,5 +374,159 @@ impl epi::App for NodeGraphExample {
                 }
             }
         }
+
+        if let Some(node) = self.state.user_state.active_node {
+            let text = match evaluate_node(&self.state.graph, node, &mut HashMap::new()) {
+                Ok(value) => format!("The result is: {:?}", value),
+                Err(err) => format!("Execution error: {}", err),
+            };
+            ctx.debug_painter().text(
+                egui::pos2(10.0, 10.0),
+                egui::Align2::LEFT_TOP,
+                text,
+                egui::TextStyle::Button,
+                egui::Color32::WHITE,
+            );
+        }
+    }
+}
+
+type OutputsCache = HashMap<OutputId, MyValueType>;
+
+/// Recursively evaluates all dependencies of this node, then evaluates the node itself.
+pub fn evaluate_node(
+    graph: &MyGraph,
+    node_id: NodeId,
+    outputs_cache: &mut OutputsCache,
+) -> anyhow::Result<MyValueType> {
+    // Similar to when creating node types above, we define two macros for
+    // convenience. They may be overkill for this small example, but something
+    // like this makes the code much more readable when the number of nodes
+    // starts growing.
+    macro_rules! input {
+        (Vec2 $name:expr) => {
+            evaluate_input(graph, node_id, $name, outputs_cache)?.try_to_vec2()?
+        };
+        (Scalar $name:expr) => {
+            evaluate_input(graph, node_id, $name, outputs_cache)?.try_to_scalar()?
+        };
+    }
+
+    macro_rules! output {
+        (Vec2 $name:expr => $value:expr) => {{
+            let out = MyValueType::Vec2 { value: $value };
+            populate_output(graph, outputs_cache, node_id, $name, out)?;
+            Ok(out)
+        }};
+        (Scalar $name:expr => $value:expr) => {{
+            let out = MyValueType::Scalar { value: $value };
+            populate_output(graph, outputs_cache, node_id, $name, out)?;
+            Ok(out)
+        }};
+    }
+
+    let node = &graph[node_id];
+    match node.user_data.template {
+        MyNodeTemplate::AddScalar => {
+            // Calling `evaluate_input` recursively evaluates other nodes in the
+            // graph until the input value for a paramater has been computed.
+            // This first call doesn't use the `input!` macro to illustrate what
+            // is going on underneath.
+            let a = evaluate_input(graph, node_id, "A", outputs_cache)?.try_to_scalar()?;
+            let b = evaluate_input(graph, node_id, "B", outputs_cache)?.try_to_scalar()?;
+
+            // After computing an output, we don't just return it, but we also
+            // populate the outputs cache with it. This ensures the evaluation
+            // only ever computes an output once.
+            //
+            // The return value of the function is the "final" output of the
+            // node, the thing we want to get from the evaluation. The example
+            // would be slightly more contrived when we had multiple output
+            // values, as we would need to choose which of the outputs is the
+            // one we want to return. Other outputs could be used as
+            // intermediate values.
+            //
+            // Note that this is just one possible semantic interpretation of
+            // the graphs, you can come up with your own evaluation semantics!
+            let out = MyValueType::Scalar { value: a + b };
+            populate_output(graph, outputs_cache, node_id, "out", out)?;
+            Ok(out)
+        }
+        MyNodeTemplate::SubtractScalar => {
+            // Using the macros, the code gets as succint as it gets
+            let a = input!(Scalar "A");
+            let b = input!(Scalar "B");
+            output!(Scalar "out" => a - b)
+        }
+        MyNodeTemplate::VectorTimesScalar => {
+            let scalar = input!(Scalar "scalar");
+            let vector = input!(Vec2 "vector");
+            output!(Vec2 "out" => vector * scalar)
+        }
+        MyNodeTemplate::AddVector => {
+            let v1 = input!(Vec2 "v1");
+            let v2 = input!(Vec2 "v2");
+            output!(Vec2 "out" => v1 + v2)
+        }
+        MyNodeTemplate::SubtractVector => {
+            let v1 = input!(Vec2 "v1");
+            let v2 = input!(Vec2 "v2");
+            output!(Vec2 "out" => v1 - v2)
+        }
+        MyNodeTemplate::MakeVector => {
+            let x = input!(Scalar "x");
+            let y = input!(Scalar "y");
+            output!(Vec2 "out" => egui::vec2(x, y))
+        }
+        MyNodeTemplate::MakeScalar => {
+            let value = input!(Scalar "value");
+            output!(Scalar "out" => value)
+        }
+    }
+}
+
+fn populate_output(
+    graph: &MyGraph,
+    outputs_cache: &mut OutputsCache,
+    node_id: NodeId,
+    param_name: &str,
+    value: MyValueType,
+) -> anyhow::Result<()> {
+    let output_id = graph[node_id].get_output(param_name)?;
+    outputs_cache.insert(output_id, value);
+    Ok(())
+}
+
+// Evaluates the input value of
+fn evaluate_input(
+    graph: &MyGraph,
+    node_id: NodeId,
+    param_name: &str,
+    outputs_cache: &mut OutputsCache,
+) -> anyhow::Result<MyValueType> {
+    let input_id = graph[node_id].get_input(param_name)?;
+
+    // The output of another node is connected.
+    if let Some(other_output_id) = graph.connection(input_id) {
+        // The value was already computed due to the evaluation of some other
+        // node. We simply return value from the cache.
+        if let Some(other_value) = outputs_cache.get(&other_output_id) {
+            Ok(*other_value)
+        }
+        // This is the first time encountering this node, so we need to
+        // recursively evaluate it.
+        else {
+            // Calling this will populate the cache
+            evaluate_node(graph, graph[other_output_id].node, outputs_cache)?;
+
+            // Now that we know the value is cached, return it
+            Ok(*outputs_cache
+                .get(&other_output_id)
+                .expect("Cache should be populated"))
+        }
+    }
+    // No existing connection, take the inline value instead.
+    else {
+        Ok(graph[input_id].value)
     }
 }

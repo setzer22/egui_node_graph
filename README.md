@@ -6,6 +6,8 @@
 ![MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 [![unsafe forbidden](https://img.shields.io/badge/unsafe-forbidden-success.svg)](https://github.com/rust-secure-code/safety-dance/)
 
+![Showcase image](showcase.png)
+
 **Egui node graph** is a featureful, customizable library to create node graph
 applications using [egui](https://github.com/emilk/egui). The library takes care
 of presenting a node graph to your users, and allows customizing many aspects of
