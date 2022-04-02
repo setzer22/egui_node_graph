@@ -60,7 +60,7 @@ where
     #[must_use]
     pub fn draw_graph_editor(
         &mut self,
-        ctx: &CtxRef,
+        ctx: &Context,
         all_kinds: impl NodeTemplateIter<Item = NodeTemplate>,
     ) -> GraphResponse<UserResponse> {
         let mouse = &ctx.input().pointer;
@@ -467,25 +467,26 @@ where
         // does not support drawing rectangles with asymmetrical round corners.
 
         let (shape, outline) = {
-            let corner_radius = 4.0;
+            let rounding_radius = 4.0;
+            let rounding = Rounding::same(rounding_radius);
 
             let titlebar_height = title_height + margin.y;
             let titlebar_rect =
                 Rect::from_min_size(outer_rect.min, vec2(outer_rect.width(), titlebar_height));
             let titlebar = Shape::Rect(RectShape {
                 rect: titlebar_rect,
-                corner_radius,
+                rounding,
                 fill: titlebar_color,
                 stroke: Stroke::none(),
             });
 
             let body_rect = Rect::from_min_size(
-                outer_rect.min + vec2(0.0, titlebar_height - corner_radius),
+                outer_rect.min + vec2(0.0, titlebar_height - rounding_radius),
                 vec2(outer_rect.width(), outer_rect.height() - titlebar_height),
             );
             let body = Shape::Rect(RectShape {
                 rect: body_rect,
-                corner_radius: 0.0,
+                rounding: Rounding::none(),
                 fill: background_color,
                 stroke: Stroke::none(),
             });
@@ -496,7 +497,7 @@ where
             );
             let bottom_body = Shape::Rect(RectShape {
                 rect: bottom_body_rect,
-                corner_radius,
+                rounding,
                 fill: background_color,
                 stroke: Stroke::none(),
             });
@@ -507,7 +508,7 @@ where
                         .union(body_rect)
                         .union(bottom_body_rect)
                         .expand(1.0),
-                    corner_radius: 4.0,
+                    rounding,
                     fill: Color32::WHITE.lighten(0.8),
                     stroke: Stroke::none(),
                 })
