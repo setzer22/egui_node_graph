@@ -61,10 +61,18 @@ where
     pub fn draw_graph_editor(
         &mut self,
         ctx: &CtxRef,
+        ui: &mut Ui,
         all_kinds: impl NodeTemplateIter<Item = NodeTemplate>,
     ) -> GraphResponse<UserResponse> {
+        // This causes the graph editor to use as much free space as it can.
+        // (so for windows it will use up to the resizeably set limit
+        // and for a Panel it will fill it completely)
+        let editor_rect = ui.max_rect();
+        ui.allocate_rect(editor_rect, Sense::hover());
+
         let mouse = &ctx.input().pointer;
         let cursor_pos = mouse.hover_pos().unwrap_or(Pos2::ZERO);
+        let mut cursor_in_editor = editor_rect.contains(cursor_pos);
 
         // Gets filled with the port locations as nodes are drawn
         let mut port_locations = PortLocations::new();
@@ -83,32 +91,30 @@ where
         inconsistent self. It has either more or less values than the graph."
         );
 
-        CentralPanel::default().show(ctx, |ui| {
-            /* Draw nodes */
-            for node_id in self.node_order.iter().copied() {
-                let responses = GraphNodeWidget {
-                    position: self.node_positions.get_mut(node_id).unwrap(),
-                    graph: &mut self.graph,
-                    port_locations: &mut port_locations,
-                    node_id,
-                    ongoing_drag: self.connection_in_progress,
-                    selected: self
-                        .selected_node
-                        .map(|selected| selected == node_id)
-                        .unwrap_or(false),
-                    pan: self.pan_zoom.pan,
-                }
+        /* Draw nodes */
+        for node_id in self.node_order.iter().copied() {
+            let responses = GraphNodeWidget {
+                position: self.node_positions.get_mut(node_id).unwrap(),
+                graph: &mut self.graph,
+                port_locations: &mut port_locations,
+                node_id,
+                ongoing_drag: self.connection_in_progress,
+                selected: self
+                    .selected_node
+                    .map(|selected| selected == node_id)
+                    .unwrap_or(false),
+                pan: self.pan_zoom.pan,
+            }
                 .show(ui, &self.user_state);
 
-                // Actions executed later
-                delayed_responses.extend(responses);
-            }
+            // Actions executed later
+            delayed_responses.extend(responses);
+        }
 
-            let r = ui.allocate_rect(ui.min_rect(), Sense::click());
-            if r.clicked() {
-                click_on_background = true;
-            }
-        });
+        let r = ui.allocate_rect(ui.min_rect(), Sense::click());
+        if r.clicked() {
+            click_on_background = true;
+        }
 
         /* Draw the node finder, if open */
         let mut should_close_node_finder = false;
@@ -130,6 +136,12 @@ where
 
                     should_close_node_finder = true;
                     delayed_responses.push(NodeResponse::CreatedNode(new_node));
+                }
+                let finder_rect = ui.max_rect();
+                // If the cursor is not in the main editor, check if the cursor *is* in the finder
+                // if the cursor is in the finder, then we can consider that also in the editor.
+                if !cursor_in_editor && finder_rect.contains(cursor_pos){
+                    cursor_in_editor = true;
                 }
             });
         }
@@ -228,7 +240,7 @@ where
             self.connection_in_progress = None;
         }
 
-        if mouse.button_down(PointerButton::Secondary) {
+        if mouse.button_down(PointerButton::Secondary) && cursor_in_editor{
             self.node_finder = Some(NodeFinder::new_at(cursor_pos));
         }
         if ctx.input().key_pressed(Key::Escape) {
@@ -239,7 +251,9 @@ where
             self.pan_zoom.pan += ctx.input().pointer.delta();
         }
 
-        if click_on_background {
+        // Deselect and deactivate finder if the editor backround is clicked,
+        // *or* if the the mouse clicks off the ui
+        if click_on_background || (mouse.any_click() && !cursor_in_editor){
             self.selected_node = None;
             self.node_finder = None;
         }
