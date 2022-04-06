@@ -15,7 +15,10 @@ pub type PortLocations = std::collections::HashMap<AnyParameterId, Pos2>;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NodeResponse<UserResponse: UserResponseTrait> {
     ConnectEventStarted(NodeId, AnyParameterId),
-    ConnectEventEnded(AnyParameterId),
+    ConnectEventEnded {
+        output: OutputId,
+        input: InputId,
+    },
     CreatedNode(NodeId),
     SelectNode(NodeId),
     DeleteNode(NodeId),
@@ -175,24 +178,8 @@ where
                 NodeResponse::ConnectEventStarted(node_id, port) => {
                     self.connection_in_progress = Some((node_id, port));
                 }
-                NodeResponse::ConnectEventEnded(locator) => {
-                    let in_out = match (
-                        self.connection_in_progress
-                            .map(|(_node, param)| param)
-                            .take()
-                            .expect("Cannot end drag without in-progress connection."),
-                        locator,
-                    ) {
-                        (AnyParameterId::Input(input), AnyParameterId::Output(output))
-                        | (AnyParameterId::Output(output), AnyParameterId::Input(input)) => {
-                            Some((input, output))
-                        }
-                        _ => None,
-                    };
-
-                    if let Some((input, output)) = in_out {
-                        self.graph.add_connection(output, input)
-                    }
+                NodeResponse::ConnectEventEnded { output, input } => {
+                    self.graph.add_connection(output, input);
                 }
                 NodeResponse::CreatedNode(_) => {
                     //Convenience NodeResponse for users
@@ -417,13 +404,17 @@ where
             }
 
             if let Some((origin_node, origin_param)) = ongoing_drag {
-                if origin_node != node_id {
-                    // Don't allow self-loops
-                    if graph.any_param_type(origin_param).unwrap() == port_type
-                        && resp.hovered()
-                        && ui.input().pointer.any_released()
-                    {
-                        responses.push(NodeResponse::ConnectEventEnded(param_id));
+                if resp.hovered() &&
+                    ui.input().pointer.any_released() &&
+                    origin_node != node_id &&                     // Don't allow self-loops
+                    graph.any_param_type(origin_param).unwrap() == port_type
+                {
+                    match (origin_param, param_id) {
+                        (AnyParameterId::Output(output), AnyParameterId::Input(input))
+                        | (AnyParameterId::Input(input), AnyParameterId::Output(output)) => {
+                            responses.push(NodeResponse::ConnectEventEnded { output, input })
+                        }
+                        _ => (),
                     }
                 }
             }
