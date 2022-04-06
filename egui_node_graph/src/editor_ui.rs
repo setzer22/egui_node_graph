@@ -156,16 +156,14 @@ where
         };
 
         if let Some((_, ref locator)) = self.connection_in_progress {
-            let painter = ctx.layer_painter(LayerId::background());
             let start_pos = port_locations[locator];
-            painter.line_segment([start_pos, cursor_pos], connection_stroke)
+            ui.painter().line_segment([start_pos, cursor_pos], connection_stroke)
         }
 
         for (input, output) in self.graph.iter_connections() {
-            let painter = ctx.layer_painter(LayerId::background());
             let src_pos = port_locations[&AnyParameterId::Output(output)];
             let dst_pos = port_locations[&AnyParameterId::Input(input)];
-            painter.line_segment([src_pos, dst_pos], connection_stroke);
+            ui.painter().line_segment([src_pos, dst_pos], connection_stroke);
         }
 
         /* Handle responses from drawing nodes */
