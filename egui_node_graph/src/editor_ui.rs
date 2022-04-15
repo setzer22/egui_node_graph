@@ -103,7 +103,7 @@ where
                     .selected_node
                     .map(|selected| selected == node_id)
                     .unwrap_or(false),
-                pan: self.pan_zoom.pan,
+                pan: self.pan_zoom.pan + editor_rect.min.to_vec2(),
             }
                 .show(ui, &self.user_state);
 
