@@ -4,7 +4,7 @@ use crate::color_hex_utils::*;
 use crate::utils::ColorUtils;
 
 use super::*;
-use egui::epaint::RectShape;
+use egui::epaint::{CubicBezierShape, RectShape};
 use egui::*;
 
 pub type PortLocations = std::collections::HashMap<AnyParameterId, Pos2>;
@@ -150,22 +150,20 @@ where
         }
 
         /* Draw connections */
-        let connection_stroke = egui::Stroke {
-            width: 5.0,
-            color: color_from_hex("#efefef").unwrap(),
-        };
 
         if let Some((_, ref locator)) = self.connection_in_progress {
             let start_pos = port_locations[locator];
-            ui.painter()
-                .line_segment([start_pos, cursor_pos], connection_stroke)
+            let (src_pos, dst_pos) = match locator {
+                AnyParameterId::Output(_) => (start_pos, cursor_pos),
+                AnyParameterId::Input(_) => (cursor_pos, start_pos),
+            };
+            draw_connection(ui.painter(), src_pos, dst_pos);
         }
 
         for (input, output) in self.graph.iter_connections() {
             let src_pos = port_locations[&AnyParameterId::Output(output)];
             let dst_pos = port_locations[&AnyParameterId::Input(input)];
-            ui.painter()
-                .line_segment([src_pos, dst_pos], connection_stroke);
+            draw_connection(ui.painter(), src_pos, dst_pos);
         }
 
         /* Handle responses from drawing nodes */
@@ -265,6 +263,26 @@ where
             node_responses: delayed_responses,
         }
     }
+}
+
+fn draw_connection(painter: &Painter, src_pos: Pos2, dst_pos: Pos2) {
+    let connection_stroke = egui::Stroke {
+        width: 5.0,
+        color: color_from_hex("#efefef").unwrap(),
+    };
+
+    let control_scale = ((dst_pos.x - src_pos.x) / 2.0).max(30.0);
+    let src_control = src_pos + Vec2::X * control_scale;
+    let dst_control = dst_pos - Vec2::X * control_scale;
+
+    let bezier = CubicBezierShape::from_points_stroke(
+        [src_pos, src_control, dst_control, dst_pos],
+        false,
+        Color32::TRANSPARENT,
+        connection_stroke,
+    );
+
+    painter.add(bezier);
 }
 
 impl<'a, NodeData, DataType, ValueType, UserResponse, UserState>
