@@ -142,45 +142,41 @@ impl NodeTemplateTrait for MyNodeTemplate {
         // The nodes are created empty by default. This function needs to take
         // care of creating the desired inputs and outputs based on the template
 
-        // We define some macros here to avoid boilerplate. Note that this is
+        // We define some lambdas here to avoid boilerplate. Note that this is
         // entirely optional.
-        macro_rules! input {
-            (scalar $name:expr) => {
-                graph.add_input_param(
-                    node_id,
-                    $name.to_string(),
-                    MyDataType::Scalar,
-                    MyValueType::Scalar { value: 0.0 },
-                    InputParamKind::ConnectionOrConstant,
-                    true,
-                );
-            };
-            (vector $name:expr) => {
-                graph.add_input_param(
-                    node_id,
-                    $name.to_string(),
-                    MyDataType::Vec2,
-                    MyValueType::Vec2 {
-                        value: egui::vec2(0.0, 0.0),
-                    },
-                    InputParamKind::ConnectionOrConstant,
-                    true,
-                );
-            };
-        }
+        let input_scalar = |graph: &mut MyGraph, name: &str| {
+            graph.add_input_param(
+                node_id,
+                name.to_string(),
+                MyDataType::Scalar,
+                MyValueType::Scalar { value: 0.0 },
+                InputParamKind::ConnectionOrConstant,
+                true,
+            );
+        };
+        let input_vector = |graph: &mut MyGraph, name: &str| {
+            graph.add_input_param(
+                node_id,
+                name.to_string(),
+                MyDataType::Vec2,
+                MyValueType::Vec2 {
+                    value: egui::vec2(0.0, 0.0),
+                },
+                InputParamKind::ConnectionOrConstant,
+                true,
+            );
+        };
 
-        macro_rules! output {
-            (scalar $name:expr) => {
-                graph.add_output_param(node_id, $name.to_string(), MyDataType::Scalar);
-            };
-            (vector $name:expr) => {
-                graph.add_output_param(node_id, $name.to_string(), MyDataType::Vec2);
-            };
-        }
+        let output_scalar = |graph: &mut MyGraph, name: &str| {
+            graph.add_output_param(node_id, name.to_string(), MyDataType::Scalar);
+        };
+        let output_vector = |graph: &mut MyGraph, name: &str| {
+            graph.add_output_param(node_id, name.to_string(), MyDataType::Vec2);
+        };
 
         match self {
             MyNodeTemplate::AddScalar => {
-                // The first input param doesn't use the macro so we can comment
+                // The first input param doesn't use the lambda so we can comment
                 // it in more detail.
                 graph.add_input_param(
                     node_id,
@@ -197,37 +193,37 @@ impl NodeTemplateTrait for MyNodeTemplate {
                     InputParamKind::ConnectionOrConstant,
                     true,
                 );
-                input!(scalar "B");
-                output!(scalar "out");
+                input_scalar(graph, "B");
+                output_scalar(graph, "out");
             }
             MyNodeTemplate::SubtractScalar => {
-                input!(scalar "A");
-                input!(scalar "B");
-                output!(scalar "out");
+                input_scalar(graph, "A");
+                input_scalar(graph, "B");
+                output_scalar(graph, "out");
             }
             MyNodeTemplate::VectorTimesScalar => {
-                input!(scalar "scalar");
-                input!(vector "vector");
-                output!(vector "out");
+                input_scalar(graph, "scalar");
+                input_vector(graph, "vector");
+                output_vector(graph, "out");
             }
             MyNodeTemplate::AddVector => {
-                input!(vector "v1");
-                input!(vector "v2");
-                output!(vector "out");
+                input_vector(graph, "v1");
+                input_vector(graph, "v2");
+                output_vector(graph, "out");
             }
             MyNodeTemplate::SubtractVector => {
-                input!(vector "v1");
-                input!(vector "v2");
-                output!(vector "out");
+                input_vector(graph, "v1");
+                input_vector(graph, "v2");
+                output_vector(graph, "out");
             }
             MyNodeTemplate::MakeVector => {
-                input!(scalar "x");
-                input!(scalar "y");
-                output!(vector "out");
+                input_scalar(graph, "x");
+                input_scalar(graph, "y");
+                output_vector(graph, "out");
             }
             MyNodeTemplate::MakeScalar => {
-                input!(scalar "value");
-                output!(scalar "out");
+                input_scalar(graph, "value");
+                output_scalar(graph, "out");
             }
         }
     }
@@ -400,30 +396,38 @@ pub fn evaluate_node(
     node_id: NodeId,
     outputs_cache: &mut OutputsCache,
 ) -> anyhow::Result<MyValueType> {
-    // Similar to when creating node types above, we define two macros for
-    // convenience. They may be overkill for this small example, but something
-    // like this makes the code much more readable when the number of nodes
-    // starts growing.
-    macro_rules! input {
-        (Vec2 $name:expr) => {
-            evaluate_input(graph, node_id, $name, outputs_cache)?.try_to_vec2()?
-        };
-        (Scalar $name:expr) => {
-            evaluate_input(graph, node_id, $name, outputs_cache)?.try_to_scalar()?
-        };
-    }
+    // To solve a similar problem as creating node types above, we define an
+    // Evaluator as a convenience. They may be overkill for this small example,
+    // but something like this makes the code much more readable when the
+    // number of nodes starts growing.
 
-    macro_rules! output {
-        (Vec2 $name:expr => $value:expr) => {{
-            let out = MyValueType::Vec2 { value: $value };
-            populate_output(graph, outputs_cache, node_id, $name, out)?;
-            Ok(out)
-        }};
-        (Scalar $name:expr => $value:expr) => {{
-            let out = MyValueType::Scalar { value: $value };
-            populate_output(graph, outputs_cache, node_id, $name, out)?;
-            Ok(out)
-        }};
+    struct Evaluator<'a> {
+        graph: &'a MyGraph,
+        outputs_cache: &'a mut OutputsCache,
+        node_id: NodeId,
+    }
+    impl<'a> Evaluator<'a> {
+        fn new(graph: &'a MyGraph, outputs_cache: &'a mut OutputsCache, node_id: NodeId) -> Self {
+            Self {
+                graph,
+                outputs_cache,
+                node_id,
+            }
+        }
+        fn input_vector(&mut self, name: &str) -> anyhow::Result<egui::Vec2> {
+            evaluate_input(self.graph, self.node_id, name, self.outputs_cache)?.try_to_vec2()
+        }
+        fn input_scalar(&mut self, name: &str) -> anyhow::Result<f32> {
+            evaluate_input(self.graph, self.node_id, name, self.outputs_cache)?.try_to_scalar()
+        }
+        fn output_vector(&mut self, name: &str, value: egui::Vec2) -> anyhow::Result<MyValueType> {
+            let value = MyValueType::Vec2 { value };
+            populate_output(self.graph, self.outputs_cache, self.node_id, name, value)
+        }
+        fn output_scalar(&mut self, name: &str, value: f32) -> anyhow::Result<MyValueType> {
+            let value = MyValueType::Scalar { value };
+            populate_output(self.graph, self.outputs_cache, self.node_id, name, value)
+        }
     }
 
     let node = &graph[node_id];
@@ -431,7 +435,7 @@ pub fn evaluate_node(
         MyNodeTemplate::AddScalar => {
             // Calling `evaluate_input` recursively evaluates other nodes in the
             // graph until the input value for a paramater has been computed.
-            // This first call doesn't use the `input!` macro to illustrate what
+            // This first call doesn't use the `Evaluator` to illustrate what
             // is going on underneath.
             let a = evaluate_input(graph, node_id, "A", outputs_cache)?.try_to_scalar()?;
             let b = evaluate_input(graph, node_id, "B", outputs_cache)?.try_to_scalar()?;
@@ -450,38 +454,43 @@ pub fn evaluate_node(
             // Note that this is just one possible semantic interpretation of
             // the graphs, you can come up with your own evaluation semantics!
             let out = MyValueType::Scalar { value: a + b };
-            populate_output(graph, outputs_cache, node_id, "out", out)?;
-            Ok(out)
+            populate_output(graph, outputs_cache, node_id, "out", out)
         }
         MyNodeTemplate::SubtractScalar => {
-            // Using the macros, the code gets as succint as it gets
-            let a = input!(Scalar "A");
-            let b = input!(Scalar "B");
-            output!(Scalar "out" => a - b)
+            // Using the evaluator, the code gets as succint as it gets
+            let mut evaluator = Evaluator::new(graph, outputs_cache, node_id);
+            let a = evaluator.input_scalar("A")?;
+            let b = evaluator.input_scalar("B")?;
+            evaluator.output_scalar("out", a - b)
         }
         MyNodeTemplate::VectorTimesScalar => {
-            let scalar = input!(Scalar "scalar");
-            let vector = input!(Vec2 "vector");
-            output!(Vec2 "out" => vector * scalar)
+            let mut evaluator = Evaluator::new(graph, outputs_cache, node_id);
+            let scalar = evaluator.input_scalar("scalar")?;
+            let vector = evaluator.input_vector("vector")?;
+            evaluator.output_vector("out", vector * scalar)
         }
         MyNodeTemplate::AddVector => {
-            let v1 = input!(Vec2 "v1");
-            let v2 = input!(Vec2 "v2");
-            output!(Vec2 "out" => v1 + v2)
+            let mut evaluator = Evaluator::new(graph, outputs_cache, node_id);
+            let v1 = evaluator.input_vector("v1")?;
+            let v2 = evaluator.input_vector("v2")?;
+            evaluator.output_vector("out", v1 + v2)
         }
         MyNodeTemplate::SubtractVector => {
-            let v1 = input!(Vec2 "v1");
-            let v2 = input!(Vec2 "v2");
-            output!(Vec2 "out" => v1 - v2)
+            let mut evaluator = Evaluator::new(graph, outputs_cache, node_id);
+            let v1 = evaluator.input_vector("v1")?;
+            let v2 = evaluator.input_vector("v2")?;
+            evaluator.output_vector("out", v1 - v2)
         }
         MyNodeTemplate::MakeVector => {
-            let x = input!(Scalar "x");
-            let y = input!(Scalar "y");
-            output!(Vec2 "out" => egui::vec2(x, y))
+            let mut evaluator = Evaluator::new(graph, outputs_cache, node_id);
+            let x = evaluator.input_scalar("x")?;
+            let y = evaluator.input_scalar("y")?;
+            evaluator.output_vector("out", egui::vec2(x, y))
         }
         MyNodeTemplate::MakeScalar => {
-            let value = input!(Scalar "value");
-            output!(Scalar "out" => value)
+            let mut evaluator = Evaluator::new(graph, outputs_cache, node_id);
+            let value = evaluator.input_scalar("value")?;
+            evaluator.output_scalar("out", value)
         }
     }
 }
@@ -492,10 +501,10 @@ fn populate_output(
     node_id: NodeId,
     param_name: &str,
     value: MyValueType,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<MyValueType> {
     let output_id = graph[node_id].get_output(param_name)?;
     outputs_cache.insert(output_id, value);
-    Ok(())
+    Ok(value)
 }
 
 // Evaluates the input value of
