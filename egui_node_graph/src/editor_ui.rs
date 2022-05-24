@@ -60,10 +60,17 @@ where
     #[must_use]
     pub fn draw_graph_editor(
         &mut self,
-        ctx: &Context,
+        ui: &mut Ui,
         all_kinds: impl NodeTemplateIter<Item = NodeTemplate>,
     ) -> GraphResponse<UserResponse> {
-        let cursor_pos = ctx.input().pointer.hover_pos().unwrap_or(Pos2::ZERO);
+        // This causes the graph editor to use as much free space as it can.
+        // (so for windows it will use up to the resizeably set limit
+        // and for a Panel it will fill it completely)
+        let editor_rect = ui.max_rect();
+        ui.allocate_rect(editor_rect, Sense::hover());
+
+        let cursor_pos = ui.ctx().input().pointer.hover_pos().unwrap_or(Pos2::ZERO);
+        let mut cursor_in_editor = editor_rect.contains(cursor_pos);
 
         // Gets filled with the port locations as nodes are drawn
         let mut port_locations = PortLocations::new();
@@ -82,32 +89,30 @@ where
         inconsistent self. It has either more or less values than the graph."
         );
 
-        CentralPanel::default().show(ctx, |ui| {
-            /* Draw nodes */
-            for node_id in self.node_order.iter().copied() {
-                let responses = GraphNodeWidget {
-                    position: self.node_positions.get_mut(node_id).unwrap(),
-                    graph: &mut self.graph,
-                    port_locations: &mut port_locations,
-                    node_id,
-                    ongoing_drag: self.connection_in_progress,
-                    selected: self
-                        .selected_node
-                        .map(|selected| selected == node_id)
-                        .unwrap_or(false),
-                    pan: self.pan_zoom.pan,
-                }
+        /* Draw nodes */
+        for node_id in self.node_order.iter().copied() {
+            let responses = GraphNodeWidget {
+                position: self.node_positions.get_mut(node_id).unwrap(),
+                graph: &mut self.graph,
+                port_locations: &mut port_locations,
+                node_id,
+                ongoing_drag: self.connection_in_progress,
+                selected: self
+                    .selected_node
+                    .map(|selected| selected == node_id)
+                    .unwrap_or(false),
+                pan: self.pan_zoom.pan + editor_rect.min.to_vec2(),
+            }
                 .show(ui, &self.user_state);
 
-                // Actions executed later
-                delayed_responses.extend(responses);
-            }
+            // Actions executed later
+            delayed_responses.extend(responses);
+        }
 
-            let r = ui.allocate_rect(ui.min_rect(), Sense::click());
-            if r.clicked() {
-                click_on_background = true;
-            }
-        });
+        let r = ui.allocate_rect(ui.min_rect(), Sense::click());
+        if r.clicked() {
+            click_on_background = true;
+        }
 
         /* Draw the node finder, if open */
         let mut should_close_node_finder = false;
@@ -116,19 +121,27 @@ where
             if let Some(pos) = node_finder.position {
                 node_finder_area = node_finder_area.current_pos(pos);
             }
-            node_finder_area.show(ctx, |ui| {
+            node_finder_area.show(ui.ctx(), |ui| {
                 if let Some(node_kind) = node_finder.show(ui, all_kinds) {
                     let new_node = self.graph.add_node(
                         node_kind.node_graph_label(),
                         node_kind.user_data(),
                         |graph, node_id| node_kind.build_node(graph, node_id),
                     );
-                    self.node_positions
-                        .insert(new_node, cursor_pos - self.pan_zoom.pan);
+                    self.node_positions.insert(
+                        new_node, 
+                        cursor_pos - self.pan_zoom.pan - editor_rect.min.to_vec2()
+                    );
                     self.node_order.push(new_node);
 
                     should_close_node_finder = true;
                     delayed_responses.push(NodeResponse::CreatedNode(new_node));
+                }
+                let finder_rect = ui.max_rect();
+                // If the cursor is not in the main editor, check if the cursor *is* in the finder
+                // if the cursor is in the finder, then we can consider that also in the editor.
+                if !cursor_in_editor && finder_rect.contains(cursor_pos){
+                    cursor_in_editor = true;
                 }
             });
         }
@@ -143,16 +156,14 @@ where
         };
 
         if let Some((_, ref locator)) = self.connection_in_progress {
-            let painter = ctx.layer_painter(LayerId::background());
             let start_pos = port_locations[locator];
-            painter.line_segment([start_pos, cursor_pos], connection_stroke)
+            ui.painter().line_segment([start_pos, cursor_pos], connection_stroke)
         }
 
         for (input, output) in self.graph.iter_connections() {
-            let painter = ctx.layer_painter(LayerId::background());
             let src_pos = port_locations[&AnyParameterId::Output(output)];
             let dst_pos = port_locations[&AnyParameterId::Input(input)];
-            painter.line_segment([src_pos, dst_pos], connection_stroke);
+            ui.painter().line_segment([src_pos, dst_pos], connection_stroke);
         }
 
         /* Handle responses from drawing nodes */
@@ -224,24 +235,26 @@ where
         /* Mouse input handling */
 
         // This locks the context, so don't hold on to it for too long.
-        let mouse = &ctx.input().pointer;
+        let mouse = &ui.ctx().input().pointer;
 
         if mouse.any_released() && self.connection_in_progress.is_some() {
             self.connection_in_progress = None;
         }
 
-        if mouse.button_down(PointerButton::Secondary) {
+        if mouse.button_down(PointerButton::Secondary) && cursor_in_editor{
             self.node_finder = Some(NodeFinder::new_at(cursor_pos));
         }
-        if ctx.input().key_pressed(Key::Escape) {
+        if ui.ctx().input().key_pressed(Key::Escape) {
             self.node_finder = None;
         }
 
-        if ctx.input().pointer.middle_down() {
-            self.pan_zoom.pan += ctx.input().pointer.delta();
+        if ui.ctx().input().pointer.middle_down() {
+            self.pan_zoom.pan += ui.ctx().input().pointer.delta();
         }
 
-        if click_on_background {
+        // Deselect and deactivate finder if the editor backround is clicked,
+        // *or* if the the mouse clicks off the ui
+        if click_on_background || (mouse.any_click() && !cursor_in_editor){
             self.selected_node = None;
             self.node_finder = None;
         }
