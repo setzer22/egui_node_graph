@@ -60,7 +60,6 @@ where
     #[must_use]
     pub fn draw_graph_editor(
         &mut self,
-        ctx: &CtxRef,
         ui: &mut Ui,
         all_kinds: impl NodeTemplateIter<Item = NodeTemplate>,
     ) -> GraphResponse<UserResponse> {
@@ -70,8 +69,7 @@ where
         let editor_rect = ui.max_rect();
         ui.allocate_rect(editor_rect, Sense::hover());
 
-        let mouse = &ctx.input().pointer;
-        let cursor_pos = mouse.hover_pos().unwrap_or(Pos2::ZERO);
+        let cursor_pos = ui.ctx().input().pointer.hover_pos().unwrap_or(Pos2::ZERO);
         let mut cursor_in_editor = editor_rect.contains(cursor_pos);
 
         // Gets filled with the port locations as nodes are drawn
@@ -123,7 +121,7 @@ where
             if let Some(pos) = node_finder.position {
                 node_finder_area = node_finder_area.current_pos(pos);
             }
-            node_finder_area.show(ctx, |ui| {
+            node_finder_area.show(ui.ctx(), |ui| {
                 if let Some(node_kind) = node_finder.show(ui, all_kinds) {
                     let new_node = self.graph.add_node(
                         node_kind.node_graph_label(),
@@ -236,6 +234,9 @@ where
 
         /* Mouse input handling */
 
+        // This locks the context, so don't hold on to it for too long.
+        let mouse = &ui.ctx().input().pointer;
+
         if mouse.any_released() && self.connection_in_progress.is_some() {
             self.connection_in_progress = None;
         }
@@ -243,12 +244,12 @@ where
         if mouse.button_down(PointerButton::Secondary) && cursor_in_editor{
             self.node_finder = Some(NodeFinder::new_at(cursor_pos));
         }
-        if ctx.input().key_pressed(Key::Escape) {
+        if ui.ctx().input().key_pressed(Key::Escape) {
             self.node_finder = None;
         }
 
-        if ctx.input().pointer.middle_down() {
-            self.pan_zoom.pan += ctx.input().pointer.delta();
+        if ui.ctx().input().pointer.middle_down() {
+            self.pan_zoom.pan += ui.ctx().input().pointer.delta();
         }
 
         // Deselect and deactivate finder if the editor backround is clicked,
@@ -481,25 +482,26 @@ where
         // does not support drawing rectangles with asymmetrical round corners.
 
         let (shape, outline) = {
-            let corner_radius = 4.0;
+            let rounding_radius = 4.0;
+            let rounding = Rounding::same(rounding_radius);
 
             let titlebar_height = title_height + margin.y;
             let titlebar_rect =
                 Rect::from_min_size(outer_rect.min, vec2(outer_rect.width(), titlebar_height));
             let titlebar = Shape::Rect(RectShape {
                 rect: titlebar_rect,
-                corner_radius,
+                rounding,
                 fill: titlebar_color,
                 stroke: Stroke::none(),
             });
 
             let body_rect = Rect::from_min_size(
-                outer_rect.min + vec2(0.0, titlebar_height - corner_radius),
+                outer_rect.min + vec2(0.0, titlebar_height - rounding_radius),
                 vec2(outer_rect.width(), outer_rect.height() - titlebar_height),
             );
             let body = Shape::Rect(RectShape {
                 rect: body_rect,
-                corner_radius: 0.0,
+                rounding: Rounding::none(),
                 fill: background_color,
                 stroke: Stroke::none(),
             });
@@ -510,7 +512,7 @@ where
             );
             let bottom_body = Shape::Rect(RectShape {
                 rect: bottom_body_rect,
-                corner_radius,
+                rounding,
                 fill: background_color,
                 stroke: Stroke::none(),
             });
@@ -521,7 +523,7 @@ where
                         .union(body_rect)
                         .union(bottom_body_rect)
                         .expand(1.0),
-                    corner_radius: 4.0,
+                    rounding,
                     fill: Color32::WHITE.lighten(0.8),
                     stroke: Stroke::none(),
                 })
