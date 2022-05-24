@@ -414,32 +414,16 @@ pub fn evaluate_node(
                 node_id,
             }
         }
-        fn input_vector(&mut self, name: &str) -> anyhow::Result<egui::Vec2> {
-            evaluate_input(self.graph, self.node_id, name, self.outputs_cache)?.try_to_vec2()
-        }
-        fn input_scalar(&mut self, name: &str) -> anyhow::Result<f32> {
-            evaluate_input(self.graph, self.node_id, name, self.outputs_cache)?.try_to_scalar()
-        }
-        fn output_vector(&mut self, name: &str, value: egui::Vec2) -> anyhow::Result<MyValueType> {
-            let value = MyValueType::Vec2 { value };
-            populate_output(self.graph, self.outputs_cache, self.node_id, name, value)
-        }
-        fn output_scalar(&mut self, name: &str, value: f32) -> anyhow::Result<MyValueType> {
-            let value = MyValueType::Scalar { value };
-            populate_output(self.graph, self.outputs_cache, self.node_id, name, value)
-        }
-    }
-
-    let node = &graph[node_id];
-    match node.user_data.template {
-        MyNodeTemplate::AddScalar => {
+        fn evaluate_input(&mut self, name: &str) -> anyhow::Result<MyValueType> {
             // Calling `evaluate_input` recursively evaluates other nodes in the
             // graph until the input value for a paramater has been computed.
-            // This first call doesn't use the `Evaluator` to illustrate what
-            // is going on underneath.
-            let a = evaluate_input(graph, node_id, "A", outputs_cache)?.try_to_scalar()?;
-            let b = evaluate_input(graph, node_id, "B", outputs_cache)?.try_to_scalar()?;
-
+            evaluate_input(self.graph, self.node_id, name, self.outputs_cache)
+        }
+        fn populate_output(
+            &mut self,
+            name: &str,
+            value: MyValueType,
+        ) -> anyhow::Result<MyValueType> {
             // After computing an output, we don't just return it, but we also
             // populate the outputs cache with it. This ensures the evaluation
             // only ever computes an output once.
@@ -453,42 +437,56 @@ pub fn evaluate_node(
             //
             // Note that this is just one possible semantic interpretation of
             // the graphs, you can come up with your own evaluation semantics!
-            let out = MyValueType::Scalar { value: a + b };
-            populate_output(graph, outputs_cache, node_id, "out", out)
+            populate_output(self.graph, self.outputs_cache, self.node_id, name, value)
+        }
+        fn input_vector(&mut self, name: &str) -> anyhow::Result<egui::Vec2> {
+            self.evaluate_input(name)?.try_to_vec2()
+        }
+        fn input_scalar(&mut self, name: &str) -> anyhow::Result<f32> {
+            self.evaluate_input(name)?.try_to_scalar()
+        }
+        fn output_vector(&mut self, name: &str, value: egui::Vec2) -> anyhow::Result<MyValueType> {
+            self.populate_output(name, MyValueType::Vec2 { value })
+        }
+        fn output_scalar(&mut self, name: &str, value: f32) -> anyhow::Result<MyValueType> {
+            self.populate_output(name, MyValueType::Scalar { value })
+        }
+    }
+
+    let node = &graph[node_id];
+    let mut evaluator = Evaluator::new(graph, outputs_cache, node_id);
+    match node.user_data.template {
+        MyNodeTemplate::AddScalar => {
+            let a = evaluator.input_scalar("A")?;
+            let b = evaluator.input_scalar("B")?;
+            evaluator.output_scalar("out", a + b)
         }
         MyNodeTemplate::SubtractScalar => {
-            // Using the evaluator, the code gets as succint as it gets
-            let mut evaluator = Evaluator::new(graph, outputs_cache, node_id);
             let a = evaluator.input_scalar("A")?;
             let b = evaluator.input_scalar("B")?;
             evaluator.output_scalar("out", a - b)
         }
         MyNodeTemplate::VectorTimesScalar => {
-            let mut evaluator = Evaluator::new(graph, outputs_cache, node_id);
             let scalar = evaluator.input_scalar("scalar")?;
             let vector = evaluator.input_vector("vector")?;
             evaluator.output_vector("out", vector * scalar)
         }
         MyNodeTemplate::AddVector => {
-            let mut evaluator = Evaluator::new(graph, outputs_cache, node_id);
             let v1 = evaluator.input_vector("v1")?;
             let v2 = evaluator.input_vector("v2")?;
             evaluator.output_vector("out", v1 + v2)
         }
         MyNodeTemplate::SubtractVector => {
-            let mut evaluator = Evaluator::new(graph, outputs_cache, node_id);
             let v1 = evaluator.input_vector("v1")?;
             let v2 = evaluator.input_vector("v2")?;
             evaluator.output_vector("out", v1 - v2)
         }
         MyNodeTemplate::MakeVector => {
-            let mut evaluator = Evaluator::new(graph, outputs_cache, node_id);
             let x = evaluator.input_scalar("x")?;
             let y = evaluator.input_scalar("y")?;
             evaluator.output_vector("out", egui::vec2(x, y))
         }
         MyNodeTemplate::MakeScalar => {
-            let mut evaluator = Evaluator::new(graph, outputs_cache, node_id);
             let value = evaluator.input_scalar("value")?;
             evaluator.output_scalar("out", value)
         }
