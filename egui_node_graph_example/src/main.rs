@@ -5,7 +5,14 @@
 // When compiling natively:
 #[cfg(not(target_arch = "wasm32"))]
 fn main() {
-    let app = egui_node_graph_example::NodeGraphExample::default();
-    let native_options = eframe::NativeOptions::default();
-    eframe::run_native(Box::new(app), native_options);
+    use eframe::egui::Visuals;
+
+    eframe::run_native(
+        "Egui node graph example",
+        eframe::NativeOptions::default(),
+        Box::new(|cc| {
+            cc.egui_ctx.set_visuals(Visuals::dark());
+            Box::new(egui_node_graph_example::NodeGraphExample::default())
+        }),
+    );
 }
