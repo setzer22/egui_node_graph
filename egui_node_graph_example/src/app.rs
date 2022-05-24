@@ -357,7 +357,9 @@ impl eframe::App for NodeGraphExample {
             .show(ctx, |ui| {
                 self.state.draw_graph_editor(ui, AllMyNodeTemplates)
             })
-            .unwrap().inner.unwrap();
+            .unwrap()
+            .inner
+            .unwrap();
         for node_response in graph_response.node_responses {
             // Here, we ignore all other graph events. But you may find
             // some use for them. For example, by playing a sound when a new
@@ -373,17 +375,21 @@ impl eframe::App for NodeGraphExample {
         }
 
         if let Some(node) = self.state.user_state.active_node {
-            let text = match evaluate_node(&self.state.graph, node, &mut HashMap::new()) {
-                Ok(value) => format!("The result is: {:?}", value),
-                Err(err) => format!("Execution error: {}", err),
-            };
-            ctx.debug_painter().text(
-                egui::pos2(10.0, 10.0),
-                egui::Align2::LEFT_TOP,
-                text,
-                TextStyle::Button.resolve(&ctx.style()),
-                egui::Color32::WHITE,
-            );
+            if self.state.graph.nodes.contains_key(node) {
+                let text = match evaluate_node(&self.state.graph, node, &mut HashMap::new()) {
+                    Ok(value) => format!("The result is: {:?}", value),
+                    Err(err) => format!("Execution error: {}", err),
+                };
+                ctx.debug_painter().text(
+                    egui::pos2(10.0, 10.0),
+                    egui::Align2::LEFT_TOP,
+                    text,
+                    TextStyle::Button.resolve(&ctx.style()),
+                    egui::Color32::WHITE,
+                );
+            } else {
+                self.state.user_state.active_node = None;
+            }
         }
     }
 }
