@@ -142,7 +142,7 @@ impl NodeTemplateTrait for MyNodeTemplate {
         // The nodes are created empty by default. This function needs to take
         // care of creating the desired inputs and outputs based on the template
 
-        // We define some lambdas here to avoid boilerplate. Note that this is
+        // We define some closures here to avoid boilerplate. Note that this is
         // entirely optional.
         let input_scalar = |graph: &mut MyGraph, name: &str| {
             graph.add_input_param(
@@ -176,7 +176,7 @@ impl NodeTemplateTrait for MyNodeTemplate {
 
         match self {
             MyNodeTemplate::AddScalar => {
-                // The first input param doesn't use the lambda so we can comment
+                // The first input param doesn't use the closure so we can comment
                 // it in more detail.
                 graph.add_input_param(
                     node_id,
