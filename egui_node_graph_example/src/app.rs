@@ -397,7 +397,7 @@ pub fn evaluate_node(
     outputs_cache: &mut OutputsCache,
 ) -> anyhow::Result<MyValueType> {
     // To solve a similar problem as creating node types above, we define an
-    // Evaluator as a convenience. They may be overkill for this small example,
+    // Evaluator as a convenience. It may be overkill for this small example,
     // but something like this makes the code much more readable when the
     // number of nodes starts growing.
 
