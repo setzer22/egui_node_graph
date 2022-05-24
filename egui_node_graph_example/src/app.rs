@@ -353,13 +353,11 @@ impl eframe::App for NodeGraphExample {
     /// Called each time the UI needs repainting, which may be many times per second.
     /// Put your widgets into a `SidePanel`, `TopPanel`, `CentralPanel`, `Window` or `Area`.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        let graph_response = egui::Window::new("Graph")
+        let graph_response = egui::CentralPanel::default()
             .show(ctx, |ui| {
                 self.state.draw_graph_editor(ui, AllMyNodeTemplates)
             })
-            .unwrap()
-            .inner
-            .unwrap();
+            .inner;
         for node_response in graph_response.node_responses {
             // Here, we ignore all other graph events. But you may find
             // some use for them. For example, by playing a sound when a new
