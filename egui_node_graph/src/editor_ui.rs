@@ -52,7 +52,7 @@ where
         ValueType = ValueType,
     >,
     UserResponse: UserResponseTrait,
-    ValueType: WidgetValueTrait,
+    ValueType: WidgetValueTrait<Response = UserResponse>,
     NodeTemplate:
         NodeTemplateTrait<NodeData = NodeData, DataType = DataType, ValueType = ValueType>,
     DataType: DataTypeTrait,
@@ -297,7 +297,7 @@ where
         ValueType = ValueType,
     >,
     UserResponse: UserResponseTrait,
-    ValueType: WidgetValueTrait,
+    ValueType: WidgetValueTrait<Response = UserResponse>,
     DataType: DataTypeTrait,
 {
     pub const MAX_NODE_SIZE: [f32; 2] = [200.0, 200.0];
@@ -373,7 +373,13 @@ where
                     if self.graph.connection(param_id).is_some() {
                         ui.label(param_name);
                     } else {
-                        self.graph[param_id].value.value_widget(&param_name, ui);
+                        responses.extend(
+                            self.graph[param_id]
+                                .value
+                                .value_widget(&param_name, ui)
+                                .into_iter()
+                                .map(NodeResponse::User),
+                        );
                     }
                     let height_after = ui.min_rect().bottom();
                     input_port_heights.push((height_before + height_after) / 2.0);

@@ -250,7 +250,8 @@ impl NodeTemplateIter for AllMyNodeTemplates {
 }
 
 impl WidgetValueTrait for MyValueType {
-    fn value_widget(&mut self, param_name: &str, ui: &mut egui::Ui) {
+    type Response = MyResponse;
+    fn value_widget(&mut self, param_name: &str, ui: &mut egui::Ui) -> Vec<MyResponse> {
         // This trait is used to tell the library which UI to display for the
         // inline parameter widgets.
         match self {
@@ -270,6 +271,8 @@ impl WidgetValueTrait for MyValueType {
                 });
             }
         }
+        // This allows you to retorn your responses from the inline widgets.
+        Vec::new()
     }
 }
 

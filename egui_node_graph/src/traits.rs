@@ -4,7 +4,8 @@ use super::*;
 /// [`Graph`]. The trait allows drawing custom inline widgets for the different
 /// types of the node graph.
 pub trait WidgetValueTrait {
-    fn value_widget(&mut self, param_name: &str, ui: &mut egui::Ui);
+    type Response;
+    fn value_widget(&mut self, param_name: &str, ui: &mut egui::Ui) -> Vec<Self::Response>;
 }
 
 /// This trait must be implemented by the `DataType` generic parameter of the
