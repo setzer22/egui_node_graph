@@ -319,10 +319,18 @@ where
     ) -> Vec<NodeResponse<UserResponse>> {
         let margin = egui::vec2(15.0, 5.0);
         let mut responses = Vec::new();
-
-        let background_color = color_from_hex("#3f3f3f").unwrap();
-        let titlebar_color = background_color.lighten(0.8);
-        let text_color = color_from_hex("#fefefe").unwrap();
+        let background_color;
+        let titlebar_color;
+        let text_color;
+        if ui.visuals().dark_mode {
+            background_color = color_from_hex("#3f3f3f").unwrap();
+            titlebar_color = background_color.lighten(0.8);
+            text_color = color_from_hex("#fefefe").unwrap();
+        } else {
+            background_color = color_from_hex("#ffffff").unwrap();
+            titlebar_color = background_color.lighten(0.8);
+            text_color = color_from_hex("#000000").unwrap();
+        }
 
         ui.visuals_mut().widgets.noninteractive.fg_stroke = Stroke::new(2.0, text_color);
 
@@ -348,7 +356,7 @@ where
                 ui.add(Label::new(
                     RichText::new(&self.graph[self.node_id].label)
                         .text_style(TextStyle::Button)
-                        .color(color_from_hex("#fefefe").unwrap()),
+                        .color(text_color),
                 ));
             });
             ui.add_space(margin.y);
