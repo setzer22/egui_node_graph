@@ -170,7 +170,7 @@ where
 
         // Some responses generate additional responses when processed. These
         // are stored here to report them back to the user.
-        let mut extra_responses : Vec<NodeResponse<UserResponse>> = Vec::new();
+        let mut extra_responses: Vec<NodeResponse<UserResponse>> = Vec::new();
 
         for response in delayed_responses.iter().copied() {
             match response {
