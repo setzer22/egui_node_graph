@@ -63,18 +63,20 @@ impl<NodeData, DataType, ValueType> Graph<NodeData, DataType, ValueType> {
         output_id
     }
 
-    pub fn remove_node(&mut self, node_id: NodeId) {
+    /// Returns the list of input and output ids that were disconnected.
+    pub fn remove_node(&mut self, node_id: NodeId) -> (SVec<InputId>, SVec<OutputId>) {
         self.connections
             .retain(|i, o| !(self.outputs[*o].node == node_id || self.inputs[i].node == node_id));
         let inputs: SVec<_> = self[node_id].input_ids().collect();
-        for input in inputs {
-            self.inputs.remove(input);
+        for input in &inputs {
+            self.inputs.remove(*input);
         }
         let outputs: SVec<_> = self[node_id].output_ids().collect();
-        for output in outputs {
-            self.outputs.remove(output);
+        for output in &outputs {
+            self.outputs.remove(*output);
         }
         self.nodes.remove(node_id);
+        (inputs, outputs)
     }
 
     pub fn remove_connection(&mut self, input_id: InputId) -> Option<OutputId> {
