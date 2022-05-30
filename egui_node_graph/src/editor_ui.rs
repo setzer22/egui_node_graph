@@ -624,6 +624,7 @@ where
                 color_from_hex("#222222").unwrap()
             }
         } else {
+            #[allow(clippy::collapsible_else_if)]
             if dark_mode {
                 color_from_hex("#aaaaaa").unwrap()
             } else {
