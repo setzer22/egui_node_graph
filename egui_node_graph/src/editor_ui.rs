@@ -522,7 +522,7 @@ where
                 fill: self.graph[self.node_id]
                     .user_data
                     .titlebar_color(ui, self.node_id, self.graph, user_state)
-                    .unwrap_or(background_color.lighten(0.8)),
+                    .unwrap_or_else(|| background_color.lighten(0.8)),
                 stroke: Stroke::none(),
             });
 
