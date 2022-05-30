@@ -323,15 +323,12 @@ where
         let mut responses = Vec::new();
 
         let background_color;
-        let titlebar_color;
         let text_color;
         if ui.visuals().dark_mode {
             background_color = color_from_hex("#3f3f3f").unwrap();
-            titlebar_color = background_color.lighten(0.8);
             text_color = color_from_hex("#fefefe").unwrap();
         } else {
             background_color = color_from_hex("#ffffff").unwrap();
-            titlebar_color = background_color.lighten(0.8);
             text_color = color_from_hex("#505050").unwrap();
         }
 
@@ -522,7 +519,10 @@ where
             let titlebar = Shape::Rect(RectShape {
                 rect: titlebar_rect,
                 rounding,
-                fill: titlebar_color,
+                fill: self.graph[self.node_id]
+                    .user_data
+                    .titlebar_color(ui, self.node_id, self.graph, user_state)
+                    .unwrap_or(background_color.lighten(0.8)),
                 stroke: Stroke::none(),
             });
 
