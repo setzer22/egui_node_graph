@@ -151,19 +151,24 @@ where
 
         /* Draw connections */
 
+        let connection_color = if ui.visuals().dark_mode {
+            color_from_hex("#efefef").unwrap()
+        } else {
+            color_from_hex("#bbbbbb").unwrap()
+        };
         if let Some((_, ref locator)) = self.connection_in_progress {
             let start_pos = port_locations[locator];
             let (src_pos, dst_pos) = match locator {
                 AnyParameterId::Output(_) => (start_pos, cursor_pos),
                 AnyParameterId::Input(_) => (cursor_pos, start_pos),
             };
-            draw_connection(ui.painter(), src_pos, dst_pos);
+            draw_connection(ui.painter(), src_pos, dst_pos, connection_color);
         }
 
         for (input, output) in self.graph.iter_connections() {
             let src_pos = port_locations[&AnyParameterId::Output(output)];
             let dst_pos = port_locations[&AnyParameterId::Input(input)];
-            draw_connection(ui.painter(), src_pos, dst_pos);
+            draw_connection(ui.painter(), src_pos, dst_pos, connection_color);
         }
 
         /* Handle responses from drawing nodes */
@@ -265,11 +270,8 @@ where
     }
 }
 
-fn draw_connection(painter: &Painter, src_pos: Pos2, dst_pos: Pos2) {
-    let connection_stroke = egui::Stroke {
-        width: 5.0,
-        color: color_from_hex("#efefef").unwrap(),
-    };
+fn draw_connection(painter: &Painter, src_pos: Pos2, dst_pos: Pos2, color: Color32) {
+    let connection_stroke = egui::Stroke { width: 5.0, color };
 
     let control_scale = ((dst_pos.x - src_pos.x) / 2.0).max(30.0);
     let src_control = src_pos + Vec2::X * control_scale;
@@ -320,9 +322,18 @@ where
         let margin = egui::vec2(15.0, 5.0);
         let mut responses = Vec::new();
 
-        let background_color = color_from_hex("#3f3f3f").unwrap();
-        let titlebar_color = background_color.lighten(0.8);
-        let text_color = color_from_hex("#fefefe").unwrap();
+        let background_color;
+        let titlebar_color;
+        let text_color;
+        if ui.visuals().dark_mode {
+            background_color = color_from_hex("#3f3f3f").unwrap();
+            titlebar_color = background_color.lighten(0.8);
+            text_color = color_from_hex("#fefefe").unwrap();
+        } else {
+            background_color = color_from_hex("#ffffff").unwrap();
+            titlebar_color = background_color.lighten(0.8);
+            text_color = color_from_hex("#505050").unwrap();
+        }
 
         ui.visuals_mut().widgets.noninteractive.fg_stroke = Stroke::new(2.0, text_color);
 
@@ -348,7 +359,7 @@ where
                 ui.add(Label::new(
                     RichText::new(&self.graph[self.node_id].label)
                         .text_style(TextStyle::Button)
-                        .color(color_from_hex("#fefefe").unwrap()),
+                        .color(text_color),
                 ));
             });
             ui.add_space(margin.y);
@@ -599,12 +610,26 @@ where
         let rect = Rect::from_center_size(position, vec2(size, size));
         let resp = ui.allocate_rect(rect, Sense::click());
 
+        let dark_mode = ui.visuals().dark_mode;
         let color = if resp.clicked() {
-            color_from_hex("#ffffff").unwrap()
+            if dark_mode {
+                color_from_hex("#ffffff").unwrap()
+            } else {
+                color_from_hex("#000000").unwrap()
+            }
         } else if resp.hovered() {
-            color_from_hex("#dddddd").unwrap()
+            if dark_mode {
+                color_from_hex("#dddddd").unwrap()
+            } else {
+                color_from_hex("#222222").unwrap()
+            }
         } else {
-            color_from_hex("#aaaaaa").unwrap()
+            #[allow(clippy::collapsible_else_if)]
+            if dark_mode {
+                color_from_hex("#aaaaaa").unwrap()
+            } else {
+                color_from_hex("#555555").unwrap()
+            }
         };
         let stroke = Stroke {
             width: stroke_width,
