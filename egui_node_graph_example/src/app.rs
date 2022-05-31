@@ -271,7 +271,7 @@ impl WidgetValueTrait for MyValueType {
                 });
             }
         }
-        // This allows you to retorn your responses from the inline widgets.
+        // This allows you to return your responses from the inline widgets.
         Vec::new()
     }
 }

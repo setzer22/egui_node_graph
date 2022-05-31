@@ -5,6 +5,10 @@ use super::*;
 /// types of the node graph.
 pub trait WidgetValueTrait {
     type Response;
+    /// This method will be called for each input parameter with a widget. The
+    /// return value is a vector of custom response objects which can be used
+    /// to implement handling of side effects. If unsure, the response Vec can
+    /// be empty.
     fn value_widget(&mut self, param_name: &str, ui: &mut egui::Ui) -> Vec<Self::Response>;
 }
 
