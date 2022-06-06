@@ -71,6 +71,7 @@ where
 
         let cursor_pos = ui.ctx().input().pointer.hover_pos().unwrap_or(Pos2::ZERO);
         let mut cursor_in_editor = editor_rect.contains(cursor_pos);
+        let mut cursor_in_finder = false;
 
         // Gets filled with the port locations as nodes are drawn
         let mut port_locations = PortLocations::new();
@@ -109,7 +110,7 @@ where
             delayed_responses.extend(responses);
         }
 
-        let r = ui.allocate_rect(ui.min_rect(), Sense::click());
+        let r = ui.allocate_rect(ui.min_rect(), Sense::click().union(Sense::drag()));
         if r.clicked() {
             click_on_background = true;
         }
@@ -142,6 +143,7 @@ where
                 // if the cursor is in the finder, then we can consider that also in the editor.
                 if !cursor_in_editor && finder_rect.contains(cursor_pos) {
                     cursor_in_editor = true;
+                    cursor_in_finder = true;
                 }
             });
         }
@@ -246,15 +248,18 @@ where
             self.connection_in_progress = None;
         }
 
-        if mouse.button_down(PointerButton::Secondary) && cursor_in_editor {
+        if mouse.button_released(PointerButton::Secondary) && cursor_in_editor && !cursor_in_finder
+        {
             self.node_finder = Some(NodeFinder::new_at(cursor_pos));
         }
         if ui.ctx().input().key_pressed(Key::Escape) {
             self.node_finder = None;
         }
 
-        if ui.ctx().input().pointer.middle_down() {
-            self.pan_zoom.pan += ui.ctx().input().pointer.delta();
+        if r.dragged() {
+            if ui.ctx().input().pointer.middle_down() {
+                self.pan_zoom.pan += ui.ctx().input().pointer.delta();
+            }
         }
 
         // Deselect and deactivate finder if the editor backround is clicked,
