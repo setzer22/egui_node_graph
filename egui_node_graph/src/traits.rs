@@ -48,6 +48,18 @@ where
     ) -> Vec<NodeResponse<Self::Response>>
     where
         Self::Response: UserResponseTrait;
+
+    /// Set background color on titlebar
+    /// If the return value is None, the default color is set.
+    fn titlebar_color(
+        &self,
+        _ui: &egui::Ui,
+        _node_id: NodeId,
+        _graph: &Graph<Self, Self::DataType, Self::ValueType>,
+        _user_state: &Self::UserState,
+    ) -> Option<egui::Color32> {
+        None
+    }
 }
 
 /// This trait can be implemented by any user type. The trait tells the library
