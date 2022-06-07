@@ -520,7 +520,7 @@ fn evaluate_input(
     let input_id = graph[node_id].get_input(param_name)?;
 
     // The output of another node is connected.
-    if let Some(other_output_id) = graph.connection(input_id) {
+    if let Some(&other_output_id) = graph.incoming(input_id).first() {
         // The value was already computed due to the evaluation of some other
         // node. We simply return value from the cache.
         if let Some(other_value) = outputs_cache.get(&other_output_id) {

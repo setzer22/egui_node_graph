@@ -31,7 +31,7 @@ pub struct GraphEditorState<NodeData, DataType, ValueType, NodeTemplate, UserSta
     pub user_state: UserState,
 }
 
-impl<NodeData, DataType, ValueType, NodeKind, UserState>
+impl<NodeData, DataType: DataTypeTrait, ValueType, NodeKind, UserState>
     GraphEditorState<NodeData, DataType, ValueType, NodeKind, UserState>
 {
     pub fn new(default_zoom: f32, user_state: UserState) -> Self {

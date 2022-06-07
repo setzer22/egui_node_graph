@@ -1,12 +1,16 @@
 use super::*;
 
-impl<NodeData, DataType, ValueType> Graph<NodeData, DataType, ValueType> {
+impl<NodeData, DataType, ValueType> Graph<NodeData, DataType, ValueType>
+where
+    DataType: DataTypeTrait,
+{
     pub fn new() -> Self {
         Self {
             nodes: SlotMap::default(),
             inputs: SlotMap::default(),
             outputs: SlotMap::default(),
-            connections: SecondaryMap::default(),
+            incoming: SecondaryMap::default(),
+            outgoing: SecondaryMap::default(),
         }
     }
 
@@ -64,21 +68,38 @@ impl<NodeData, DataType, ValueType> Graph<NodeData, DataType, ValueType> {
     }
 
     pub fn remove_node(&mut self, node_id: NodeId) {
-        self.connections
-            .retain(|i, o| !(self.outputs[*o].node == node_id || self.inputs[i].node == node_id));
         let inputs: SVec<_> = self[node_id].input_ids().collect();
         for input in inputs {
-            self.inputs.remove(input);
+            self.remove_incoming_connections(input);
         }
         let outputs: SVec<_> = self[node_id].output_ids().collect();
         for output in outputs {
-            self.outputs.remove(output);
+            self.remove_outgoing_connections(output);
         }
         self.nodes.remove(node_id);
     }
 
-    pub fn remove_connection(&mut self, input_id: InputId) -> Option<OutputId> {
-        self.connections.remove(input_id)
+    pub fn remove_connection(&mut self, output_id: OutputId, input_id: InputId) {
+        self.outgoing[output_id].retain(|&mut x| x != input_id);
+        self.incoming[input_id].retain(|&mut x| x != output_id);
+    }
+
+    pub fn remove_incoming_connections(&mut self, input_id: InputId) {
+        if let Some(outputs) = self.incoming.get(input_id) {
+            for &output in outputs {
+                self.outgoing[output].retain(|&mut x| x != input_id);
+            }
+        }
+        self.incoming.remove(input_id);
+    }
+
+    pub fn remove_outgoing_connections(&mut self, output_id: OutputId) {
+        if let Some(inputs) = self.outgoing.get(output_id) {
+            for &input in inputs {
+                self.incoming[input].retain(|&mut x| x != output_id);
+            }
+        }
+        self.outgoing.remove(output_id);
     }
 
     pub fn iter_nodes(&self) -> impl Iterator<Item = NodeId> + '_ {
@@ -86,15 +107,51 @@ impl<NodeData, DataType, ValueType> Graph<NodeData, DataType, ValueType> {
     }
 
     pub fn add_connection(&mut self, output: OutputId, input: InputId) {
-        self.connections.insert(input, output);
+        if self.get_input(input).typ.mergeable() {
+            self.incoming
+                .entry(input)
+                .expect("Old InputId")
+                .or_default()
+                .push(output);
+        } else {
+            self.remove_incoming_connections(input);
+            let mut v = SVec::new();
+            v.push(output);
+            self.incoming.insert(input, v);
+        }
+
+        if self.get_output(output).typ.splittable() {
+            self.outgoing
+                .entry(output)
+                .expect("Old OutputId")
+                .or_default()
+                .push(input);
+        } else {
+            self.remove_outgoing_connections(output);
+            let mut v = SVec::new();
+            v.push(input);
+            self.outgoing.insert(output, v);
+        }
     }
 
     pub fn iter_connections(&self) -> impl Iterator<Item = (InputId, OutputId)> + '_ {
-        self.connections.iter().map(|(o, i)| (o, *i))
+        self.incoming
+            .iter()
+            .flat_map(|(o, inputs)| inputs.iter().map(move |&i| (o, i)))
     }
 
-    pub fn connection(&self, input: InputId) -> Option<OutputId> {
-        self.connections.get(input).copied()
+    pub fn incoming(&self, input: InputId) -> &[OutputId] {
+        self.incoming
+            .get(input)
+            .map(|x| x.as_slice())
+            .unwrap_or(&[])
+    }
+
+    pub fn outgoing(&self, output: OutputId) -> &[InputId] {
+        self.outgoing
+            .get(output)
+            .map(|x| x.as_slice())
+            .unwrap_or(&[])
     }
 
     pub fn any_param_type(&self, param: AnyParameterId) -> Result<&DataType, EguiGraphError> {
@@ -114,21 +171,23 @@ impl<NodeData, DataType, ValueType> Graph<NodeData, DataType, ValueType> {
     }
 }
 
-impl<NodeData, DataType, ValueType> Default for Graph<NodeData, DataType, ValueType> {
+impl<NodeData, DataType: DataTypeTrait, ValueType> Default
+    for Graph<NodeData, DataType, ValueType>
+{
     fn default() -> Self {
         Self::new()
     }
 }
 
 impl<NodeData> Node<NodeData> {
-    pub fn inputs<'a, DataType, DataValue>(
+    pub fn inputs<'a, DataType: DataTypeTrait, DataValue>(
         &'a self,
         graph: &'a Graph<NodeData, DataType, DataValue>,
     ) -> impl Iterator<Item = &InputParam<DataType, DataValue>> + 'a {
         self.input_ids().map(|id| graph.get_input(id))
     }
 
-    pub fn outputs<'a, DataType, DataValue>(
+    pub fn outputs<'a, DataType: DataTypeTrait, DataValue>(
         &'a self,
         graph: &'a Graph<NodeData, DataType, DataValue>,
     ) -> impl Iterator<Item = &OutputParam<DataType>> + 'a {

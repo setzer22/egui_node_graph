@@ -15,11 +15,17 @@ pub type PortLocations = std::collections::HashMap<AnyParameterId, Pos2>;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NodeResponse<UserResponse: UserResponseTrait> {
     ConnectEventStarted(NodeId, AnyParameterId),
-    ConnectEventEnded(AnyParameterId),
+    ConnectEventEnded {
+        output: OutputId,
+        input: InputId,
+    },
     CreatedNode(NodeId),
     SelectNode(NodeId),
     DeleteNode(NodeId),
-    DisconnectEvent(InputId),
+    DisconnectEvent {
+        output: OutputId,
+        input: InputId,
+    },
     /// Emitted when a node is interacted with, and should be raised
     RaiseNode(NodeId),
     User(UserResponse),
@@ -179,24 +185,8 @@ where
                 NodeResponse::ConnectEventStarted(node_id, port) => {
                     self.connection_in_progress = Some((node_id, port));
                 }
-                NodeResponse::ConnectEventEnded(locator) => {
-                    let in_out = match (
-                        self.connection_in_progress
-                            .map(|(_node, param)| param)
-                            .take()
-                            .expect("Cannot end drag without in-progress connection."),
-                        locator,
-                    ) {
-                        (AnyParameterId::Input(input), AnyParameterId::Output(output))
-                        | (AnyParameterId::Output(output), AnyParameterId::Input(input)) => {
-                            Some((input, output))
-                        }
-                        _ => None,
-                    };
-
-                    if let Some((input, output)) = in_out {
-                        self.graph.add_connection(output, input)
-                    }
+                NodeResponse::ConnectEventEnded { output, input } => {
+                    self.graph.add_connection(output, input);
                 }
                 NodeResponse::CreatedNode(_) => {
                     //Convenience NodeResponse for users
@@ -213,15 +203,11 @@ where
                     }
                     self.node_order.retain(|id| *id != node_id);
                 }
-                NodeResponse::DisconnectEvent(input_id) => {
-                    let corresp_output = self
-                        .graph
-                        .connection(input_id)
-                        .expect("Connection data should be valid");
-                    let other_node = self.graph.get_input(input_id).node();
-                    self.graph.remove_connection(input_id);
+                NodeResponse::DisconnectEvent { input, output } => {
+                    let other_node = self.graph.get_input(input).node();
+                    self.graph.remove_connection(output, input);
                     self.connection_in_progress =
-                        Some((other_node, AnyParameterId::Output(corresp_output)));
+                        Some((other_node, AnyParameterId::Output(output)));
                 }
                 NodeResponse::RaiseNode(node_id) => {
                     let old_pos = self
@@ -371,10 +357,10 @@ where
             for (param_name, param_id) in inputs {
                 if self.graph[param_id].shown_inline {
                     let height_before = ui.min_rect().bottom();
-                    if self.graph.connection(param_id).is_some() {
-                        ui.label(param_name);
-                    } else {
+                    if self.graph.incoming(param_id).is_empty() {
                         self.graph[param_id].value.value_widget(&param_name, ui);
+                    } else {
+                        ui.label(param_name);
                     }
                     let height_after = ui.min_rect().bottom();
                     input_port_heights.push((height_before + height_after) / 2.0);
@@ -415,7 +401,11 @@ where
             param_id: AnyParameterId,
             port_locations: &mut PortLocations,
             ongoing_drag: Option<(NodeId, AnyParameterId)>,
-            is_connected_input: bool,
+            // If the datatype of this node restricts it to connecting to
+            // at most one other node, and there is a connection, then this
+            // parameter should be Some(PortItIsConnectedTo), otherwise it
+            // should be None
+            unique_connection: Option<AnyParameterId>,
         ) where
             DataType: DataTypeTrait<UserState>,
             UserResponse: UserResponseTrait,
@@ -440,21 +430,32 @@ where
                 .circle(port_rect.center(), 5.0, port_color, Stroke::none());
 
             if resp.drag_started() {
-                if is_connected_input {
-                    responses.push(NodeResponse::DisconnectEvent(param_id.assume_input()));
-                } else {
-                    responses.push(NodeResponse::ConnectEventStarted(node_id, param_id));
-                }
+                let response = match unique_connection {
+                    Some(AnyParameterId::Input(input)) => NodeResponse::DisconnectEvent {
+                        input,
+                        output: param_id.assume_output(),
+                    },
+                    Some(AnyParameterId::Output(output)) => NodeResponse::DisconnectEvent {
+                        input: param_id.assume_input(),
+                        output,
+                    },
+                    None => NodeResponse::ConnectEventStarted(node_id, param_id),
+                };
+                responses.push(response);
             }
 
             if let Some((origin_node, origin_param)) = ongoing_drag {
-                if origin_node != node_id {
-                    // Don't allow self-loops
-                    if graph.any_param_type(origin_param).unwrap() == port_type
-                        && resp.hovered()
-                        && ui.input().pointer.any_released()
-                    {
-                        responses.push(NodeResponse::ConnectEventEnded(param_id));
+                if resp.hovered() &&
+                    ui.input().pointer.any_released() &&
+                    origin_node != node_id &&                     // Don't allow self-loops
+                    graph.any_param_type(origin_param).unwrap() == port_type
+                {
+                    match (origin_param, param_id) {
+                        (AnyParameterId::Output(output), AnyParameterId::Input(input))
+                        | (AnyParameterId::Input(input), AnyParameterId::Output(output)) => {
+                            responses.push(NodeResponse::ConnectEventEnded { output, input })
+                        }
+                        _ => (),
                     }
                 }
             }
@@ -474,6 +475,16 @@ where
                 InputParamKind::ConnectionOrConstant => true,
             };
 
+            let unique_connection = if !self.graph.get_input(*param).typ.mergeable() {
+                self.graph
+                    .incoming(*param)
+                    .first()
+                    .copied()
+                    .map(AnyParameterId::Output)
+            } else {
+                None
+            };
+
             if should_draw {
                 let pos_left = pos2(port_left, port_height);
                 draw_port(
@@ -486,7 +497,7 @@ where
                     AnyParameterId::Input(*param),
                     self.port_locations,
                     self.ongoing_drag,
-                    self.graph.connection(*param).is_some(),
+                    unique_connection,
                 );
             }
         }
@@ -497,6 +508,16 @@ where
             .iter()
             .zip(output_port_heights.into_iter())
         {
+            let unique_connection = if !self.graph.get_output(*param).typ.splittable() {
+                self.graph
+                    .outgoing(*param)
+                    .first()
+                    .copied()
+                    .map(AnyParameterId::Input)
+            } else {
+                None
+            };
+
             let pos_right = pos2(port_right, port_height);
             draw_port(
                 ui,
@@ -508,7 +529,7 @@ where
                 AnyParameterId::Output(*param),
                 self.port_locations,
                 self.ongoing_drag,
-                false,
+                unique_connection,
             );
         }
 

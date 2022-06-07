@@ -16,6 +16,16 @@ pub trait DataTypeTrait<UserState>: PartialEq + Eq {
 
     // The name of this datatype
     fn name(&self) -> &str;
+
+    /// Whether an output of this datatype can be sent to multiple nodes
+    fn splittable(&self) -> bool {
+        true
+    }
+
+    /// Whether an input of this datatype can be recieved from multiple nodes
+    fn mergeable(&self) -> bool {
+        false
+    }
 }
 
 /// This trait must be implemented for the `NodeData` generic parameter of the
