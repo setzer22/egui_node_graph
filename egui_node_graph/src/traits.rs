@@ -10,9 +10,9 @@ pub trait WidgetValueTrait {
 /// This trait must be implemented by the `DataType` generic parameter of the
 /// [`Graph`]. This trait tells the library how to visually expose data types
 /// to the user.
-pub trait DataTypeTrait: PartialEq + Eq {
+pub trait DataTypeTrait<UserState>: PartialEq + Eq {
     // The associated port color of this datatype
-    fn data_type_color(&self) -> egui::Color32;
+    fn data_type_color(&self, user_state: &UserState) -> egui::Color32;
 
     // The name of this datatype
     fn name(&self) -> &str;
