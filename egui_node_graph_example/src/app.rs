@@ -89,8 +89,8 @@ pub struct MyGraphState {
 // =========== Then, you need to implement some traits ============
 
 // A trait for the data types, to tell the library how to display them
-impl DataTypeTrait for MyDataType {
-    fn data_type_color(&self) -> egui::Color32 {
+impl DataTypeTrait<MyGraphState> for MyDataType {
+    fn data_type_color(&self, _user_state: &MyGraphState) -> egui::Color32 {
         match self {
             MyDataType::Scalar => egui::Color32::from_rgb(38, 109, 211),
             MyDataType::Vec2 => egui::Color32::from_rgb(238, 207, 109),
