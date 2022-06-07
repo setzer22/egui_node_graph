@@ -63,20 +63,36 @@ impl<NodeData, DataType, ValueType> Graph<NodeData, DataType, ValueType> {
         output_id
     }
 
-    /// Returns the list of input and output ids that were disconnected.
-    pub fn remove_node(&mut self, node_id: NodeId) -> (SVec<InputId>, SVec<OutputId>) {
-        self.connections
-            .retain(|i, o| !(self.outputs[*o].node == node_id || self.inputs[i].node == node_id));
-        let inputs: SVec<_> = self[node_id].input_ids().collect();
-        for input in &inputs {
-            self.inputs.remove(*input);
+    /// Removes a node from the graph with given `node_id`. This also removes
+    /// any incoming or outgoing connections from that node
+    ///
+    /// This function returns the list of connections that has been removed
+    /// after deleting this node as input-output pairs. Note that one of the two
+    /// ids in the pair (the one on `node_id`'s end) will be invalid after
+    /// calling this function.
+    pub fn remove_node(&mut self, node_id: NodeId) -> Vec<(InputId, OutputId)> {
+        let mut disconnect_events = vec![];
+
+        self.connections.retain(|i, o| {
+            if self.outputs[*o].node == node_id || self.inputs[i].node == node_id {
+                disconnect_events.push((i, *o));
+                false
+            } else {
+                true
+            }
+        });
+
+        // NOTE: Collect is needed because we can't borrow the input ids while
+        // we remove them inside the loop.
+        for input in self[node_id].input_ids().collect::<SVec<_>>() {
+            self.inputs.remove(input);
         }
-        let outputs: SVec<_> = self[node_id].output_ids().collect();
-        for output in &outputs {
-            self.outputs.remove(*output);
+        for output in self[node_id].output_ids().collect::<SVec<_>>() {
+            self.outputs.remove(output);
         }
         self.nodes.remove(node_id);
-        (inputs, outputs)
+
+        disconnect_events
     }
 
     pub fn remove_connection(&mut self, input_id: InputId) -> Option<OutputId> {

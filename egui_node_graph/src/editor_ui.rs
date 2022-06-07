@@ -203,8 +203,14 @@ where
                     self.selected_node = Some(node_id);
                 }
                 NodeResponse::DeleteNode(node_id) => {
-                    let (ins, _) = self.graph.remove_node(node_id);
-                    extra_responses.extend(ins.into_iter().map(NodeResponse::DisconnectEvent));
+                    let removed = self.graph.remove_node(node_id);
+                    extra_responses.extend(
+                        removed
+                            .into_iter()
+                            .map(|x| x.0)
+                            .into_iter()
+                            .map(NodeResponse::DisconnectEvent),
+                    );
                     self.node_positions.remove(node_id);
                     // Make sure to not leave references to old nodes hanging
                     if self.selected_node.map(|x| x == node_id).unwrap_or(false) {
