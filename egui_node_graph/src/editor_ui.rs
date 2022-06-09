@@ -15,11 +15,17 @@ pub type PortLocations = std::collections::HashMap<AnyParameterId, Pos2>;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NodeResponse<UserResponse: UserResponseTrait> {
     ConnectEventStarted(NodeId, AnyParameterId),
-    ConnectEventEnded(AnyParameterId),
+    ConnectEventEnded {
+        output: OutputId,
+        input: InputId,
+    },
     CreatedNode(NodeId),
     SelectNode(NodeId),
     DeleteNode(NodeId),
-    DisconnectEvent(InputId),
+    DisconnectEvent {
+        output: OutputId,
+        input: InputId,
+    },
     /// Emitted when a node is interacted with, and should be raised
     RaiseNode(NodeId),
     User(UserResponse),
@@ -183,24 +189,8 @@ where
                 NodeResponse::ConnectEventStarted(node_id, port) => {
                     self.connection_in_progress = Some((node_id, port));
                 }
-                NodeResponse::ConnectEventEnded(locator) => {
-                    let in_out = match (
-                        self.connection_in_progress
-                            .map(|(_node, param)| param)
-                            .take()
-                            .expect("Cannot end drag without in-progress connection."),
-                        locator,
-                    ) {
-                        (AnyParameterId::Input(input), AnyParameterId::Output(output))
-                        | (AnyParameterId::Output(output), AnyParameterId::Input(input)) => {
-                            Some((input, output))
-                        }
-                        _ => None,
-                    };
-
-                    if let Some((input, output)) = in_out {
-                        self.graph.add_connection(output, input)
-                    }
+                NodeResponse::ConnectEventEnded { input, output } => {
+                    self.graph.add_connection(output, input)
                 }
                 NodeResponse::CreatedNode(_) => {
                     //Convenience NodeResponse for users
@@ -213,9 +203,7 @@ where
                     extra_responses.extend(
                         removed
                             .into_iter()
-                            .map(|x| x.0)
-                            .into_iter()
-                            .map(NodeResponse::DisconnectEvent),
+                            .map(|(input, output)| NodeResponse::DisconnectEvent { input, output }),
                     );
                     self.node_positions.remove(node_id);
                     // Make sure to not leave references to old nodes hanging
@@ -224,15 +212,11 @@ where
                     }
                     self.node_order.retain(|id| *id != node_id);
                 }
-                NodeResponse::DisconnectEvent(input_id) => {
-                    let corresp_output = self
-                        .graph
-                        .connection(input_id)
-                        .expect("Connection data should be valid");
-                    let other_node = self.graph.get_input(input_id).node();
-                    self.graph.remove_connection(input_id);
+                NodeResponse::DisconnectEvent { input, output } => {
+                    let other_node = self.graph.get_input(input).node();
+                    self.graph.remove_connection(input);
                     self.connection_in_progress =
-                        Some((other_node, AnyParameterId::Output(corresp_output)));
+                        Some((other_node, AnyParameterId::Output(output)));
                 }
                 NodeResponse::RaiseNode(node_id) => {
                     let old_pos = self
@@ -375,6 +359,7 @@ where
                         .text_style(TextStyle::Button)
                         .color(text_color),
                 ));
+                ui.add_space(8.0); // The size of the little cross icon
             });
             ui.add_space(margin.y);
             title_height = ui.min_size().y;
@@ -460,7 +445,14 @@ where
 
             if resp.drag_started() {
                 if is_connected_input {
-                    responses.push(NodeResponse::DisconnectEvent(param_id.assume_input()));
+                    let input = param_id.assume_input();
+                    let corresp_output = graph
+                        .connection(input)
+                        .expect("Connection data should be valid");
+                    responses.push(NodeResponse::DisconnectEvent {
+                        input: param_id.assume_input(),
+                        output: corresp_output,
+                    });
                 } else {
                     responses.push(NodeResponse::ConnectEventStarted(node_id, param_id));
                 }
@@ -473,7 +465,13 @@ where
                         && resp.hovered()
                         && ui.input().pointer.any_released()
                     {
-                        responses.push(NodeResponse::ConnectEventEnded(param_id));
+                        match (param_id, origin_param) {
+                            (AnyParameterId::Input(input), AnyParameterId::Output(output))
+                            | (AnyParameterId::Output(output), AnyParameterId::Input(input)) => {
+                                responses.push(NodeResponse::ConnectEventEnded { input, output });
+                            }
+                            _ => { /* Ignore in-in or out-out connections */ }
+                        }
                     }
                 }
             }
@@ -532,7 +530,7 @@ where
         }
 
         // Draw the background shape.
-        // NOTE: This code is a bit more involve than it needs to be because egui
+        // NOTE: This code is a bit more involved than it needs to be because egui
         // does not support drawing rectangles with asymmetrical round corners.
 
         let (shape, outline) = {
