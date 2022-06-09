@@ -21,12 +21,12 @@ pub trait DataTypeTrait<UserState>: PartialEq + Eq {
 
     /// The name of this datatype. Return type is specified as Cow<str> because
     /// some implementations will need to allocate a new string to provide an
-    /// answer while others won't. 
+    /// answer while others won't.
     ///
     /// ## Example (borrowed value)
     /// Use this when you can get the name of the datatype from its fields or as
     /// a &'static str. Prefer this method when possible.
-    /// ```rust
+    /// ```ignore
     /// pub struct DataType { name: String }
     ///
     /// impl DataTypeTrait<()> for DataType {
@@ -38,7 +38,7 @@ pub trait DataTypeTrait<UserState>: PartialEq + Eq {
     ///
     /// ## Example (owned value)
     /// Use this when you can't derive the name of the datatype from its fields.
-    /// ```rust
+    /// ```ignore
     /// pub struct DataType { some_tag: i32 }
     ///
     /// impl DataTypeTrait<()> for DataType {
