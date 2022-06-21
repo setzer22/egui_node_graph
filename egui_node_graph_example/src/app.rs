@@ -294,7 +294,7 @@ impl NodeDataTrait for MyNodeData {
         node_id: NodeId,
         _graph: &Graph<MyNodeData, MyDataType, MyValueType>,
         user_state: &Self::UserState,
-    ) -> Vec<NodeResponse<MyResponse>>
+    ) -> Vec<NodeResponse<MyResponse, MyNodeData>>
     where
         MyResponse: UserResponseTrait,
     {
