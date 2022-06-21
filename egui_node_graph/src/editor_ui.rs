@@ -12,8 +12,8 @@ pub type PortLocations = std::collections::HashMap<AnyParameterId, Pos2>;
 /// Nodes communicate certain events to the parent graph when drawn. There is
 /// one special `User` variant which can be used by users as the return value
 /// when executing some custom actions in the UI of the node.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum NodeResponse<UserResponse: UserResponseTrait> {
+#[derive(Clone, Debug)]
+pub enum NodeResponse<UserResponse: UserResponseTrait, NodeData: NodeDataTrait> {
     ConnectEventStarted(NodeId, AnyParameterId),
     ConnectEventEnded {
         output: OutputId,
@@ -21,7 +21,16 @@ pub enum NodeResponse<UserResponse: UserResponseTrait> {
     },
     CreatedNode(NodeId),
     SelectNode(NodeId),
-    DeleteNode(NodeId),
+    /// As a user of this library, prefer listening for `DeleteNodeFull` which
+    /// will also contain the user data for the deleted node.
+    DeleteNodeUi(NodeId),
+    /// Emitted when a node is deleted. The node will no longer exist in the
+    /// graph after this response is returned from the draw function, but its
+    /// contents are passed along with the event.
+    DeleteNodeFull {
+        node_id: NodeId,
+        node: Node<NodeData>,
+    },
     DisconnectEvent {
         output: OutputId,
         input: InputId,
@@ -34,8 +43,8 @@ pub enum NodeResponse<UserResponse: UserResponseTrait> {
 /// The return value of [`draw_graph_editor`]. This value can be used to make
 /// user code react to specific events that happened when drawing the graph.
 #[derive(Clone, Debug)]
-pub struct GraphResponse<UserResponse: UserResponseTrait> {
-    pub node_responses: Vec<NodeResponse<UserResponse>>,
+pub struct GraphResponse<UserResponse: UserResponseTrait, NodeData: NodeDataTrait> {
+    pub node_responses: Vec<NodeResponse<UserResponse, NodeData>>,
 }
 
 pub struct GraphNodeWidget<'a, NodeData, DataType, ValueType> {
@@ -68,7 +77,7 @@ where
         &mut self,
         ui: &mut Ui,
         all_kinds: impl NodeTemplateIter<Item = NodeTemplate>,
-    ) -> GraphResponse<UserResponse> {
+    ) -> GraphResponse<UserResponse, NodeData> {
         // This causes the graph editor to use as much free space as it can.
         // (so for windows it will use up to the resizeably set limit
         // and for a Panel it will fill it completely)
@@ -83,7 +92,7 @@ where
 
         // The responses returned from node drawing have side effects that are best
         // executed at the end of this function.
-        let mut delayed_responses: Vec<NodeResponse<UserResponse>> = vec![];
+        let mut delayed_responses: Vec<NodeResponse<UserResponse, NodeData>> = vec![];
 
         // Used to detect when the background was clicked, to dismiss certain selfs
         let mut click_on_background = false;
@@ -182,53 +191,62 @@ where
 
         // Some responses generate additional responses when processed. These
         // are stored here to report them back to the user.
-        let mut extra_responses: Vec<NodeResponse<UserResponse>> = Vec::new();
+        let mut extra_responses: Vec<NodeResponse<UserResponse, NodeData>> = Vec::new();
 
-        for response in delayed_responses.iter().copied() {
+        for response in delayed_responses.iter() {
             match response {
                 NodeResponse::ConnectEventStarted(node_id, port) => {
-                    self.connection_in_progress = Some((node_id, port));
+                    self.connection_in_progress = Some((*node_id, *port));
                 }
                 NodeResponse::ConnectEventEnded { input, output } => {
-                    self.graph.add_connection(output, input)
+                    self.graph.add_connection(*output, *input)
                 }
                 NodeResponse::CreatedNode(_) => {
                     //Convenience NodeResponse for users
                 }
                 NodeResponse::SelectNode(node_id) => {
-                    self.selected_node = Some(node_id);
+                    self.selected_node = Some(*node_id);
                 }
-                NodeResponse::DeleteNode(node_id) => {
-                    let removed = self.graph.remove_node(node_id);
+                NodeResponse::DeleteNodeUi(node_id) => {
+                    let (node, disc_events) = self.graph.remove_node(*node_id);
+                    // Pass the full node as a response so library users can
+                    // listen for it and get their user data.
+                    extra_responses.push(NodeResponse::DeleteNodeFull {
+                        node_id: *node_id,
+                        node,
+                    });
                     extra_responses.extend(
-                        removed
+                        disc_events
                             .into_iter()
                             .map(|(input, output)| NodeResponse::DisconnectEvent { input, output }),
                     );
-                    self.node_positions.remove(node_id);
+                    self.node_positions.remove(*node_id);
                     // Make sure to not leave references to old nodes hanging
-                    if self.selected_node.map(|x| x == node_id).unwrap_or(false) {
+                    if self.selected_node.map(|x| x == *node_id).unwrap_or(false) {
                         self.selected_node = None;
                     }
-                    self.node_order.retain(|id| *id != node_id);
+                    self.node_order.retain(|id| *id != *node_id);
                 }
                 NodeResponse::DisconnectEvent { input, output } => {
-                    let other_node = self.graph.get_input(input).node();
-                    self.graph.remove_connection(input);
+                    let other_node = self.graph.get_input(*input).node();
+                    self.graph.remove_connection(*input);
                     self.connection_in_progress =
-                        Some((other_node, AnyParameterId::Output(output)));
+                        Some((other_node, AnyParameterId::Output(*output)));
                 }
                 NodeResponse::RaiseNode(node_id) => {
                     let old_pos = self
                         .node_order
                         .iter()
-                        .position(|id| *id == node_id)
+                        .position(|id| *id == *node_id)
                         .expect("Node to be raised should be in `node_order`");
                     self.node_order.remove(old_pos);
-                    self.node_order.push(node_id);
+                    self.node_order.push(*node_id);
                 }
                 NodeResponse::User(_) => {
                     // These are handled by the user code.
+                }
+                NodeResponse::DeleteNodeFull { .. } => {
+                    unreachable!("The UI should never produce a DeleteNodeFull event.")
                 }
             }
         }
@@ -303,7 +321,11 @@ where
 {
     pub const MAX_NODE_SIZE: [f32; 2] = [200.0, 200.0];
 
-    pub fn show(self, ui: &mut Ui, user_state: &UserState) -> Vec<NodeResponse<UserResponse>> {
+    pub fn show(
+        self,
+        ui: &mut Ui,
+        user_state: &UserState,
+    ) -> Vec<NodeResponse<UserResponse, NodeData>> {
         let mut child_ui = ui.child_ui_with_id_source(
             Rect::from_min_size(*self.position + self.pan, Self::MAX_NODE_SIZE.into()),
             Layout::default(),
@@ -319,9 +341,9 @@ where
         self,
         ui: &mut Ui,
         user_state: &UserState,
-    ) -> Vec<NodeResponse<UserResponse>> {
+    ) -> Vec<NodeResponse<UserResponse, NodeData>> {
         let margin = egui::vec2(15.0, 5.0);
-        let mut responses = Vec::new();
+        let mut responses = Vec::<NodeResponse<UserResponse, NodeData>>::new();
 
         let background_color;
         let text_color;
@@ -415,7 +437,7 @@ where
             node_id: NodeId,
             user_state: &UserState,
             port_pos: Pos2,
-            responses: &mut Vec<NodeResponse<UserResponse>>,
+            responses: &mut Vec<NodeResponse<UserResponse, NodeData>>,
             param_id: AnyParameterId,
             port_locations: &mut PortLocations,
             ongoing_drag: Option<(NodeId, AnyParameterId)>,
@@ -423,6 +445,7 @@ where
         ) where
             DataType: DataTypeTrait<UserState>,
             UserResponse: UserResponseTrait,
+            NodeData: NodeDataTrait,
         {
             let port_type = graph.any_param_type(param_id).unwrap();
 
@@ -596,7 +619,7 @@ where
 
         // Titlebar buttons
         if Self::close_button(ui, outer_rect).clicked() {
-            responses.push(NodeResponse::DeleteNode(self.node_id));
+            responses.push(NodeResponse::DeleteNodeUi(self.node_id));
         };
 
         let window_response = ui.interact(

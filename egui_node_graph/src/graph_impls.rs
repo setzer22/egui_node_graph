@@ -53,6 +53,20 @@ impl<NodeData, DataType, ValueType> Graph<NodeData, DataType, ValueType> {
         input_id
     }
 
+    pub fn remove_input_param(&mut self, param: InputId) {
+        let node = self[param].node;
+        self[node].inputs.retain(|(_, id)| *id != param);
+        self.inputs.remove(param);
+        self.connections.retain(|i, _| i != param);
+    }
+
+    pub fn remove_output_param(&mut self, param: OutputId) {
+        let node = self[param].node;
+        self[node].outputs.retain(|(_, id)| *id != param);
+        self.outputs.remove(param);
+        self.connections.retain(|_, o| *o != param);
+    }
+
     pub fn add_output_param(&mut self, node_id: NodeId, name: String, typ: DataType) -> OutputId {
         let output_id = self.outputs.insert_with_key(|output_id| OutputParam {
             id: output_id,
@@ -70,7 +84,7 @@ impl<NodeData, DataType, ValueType> Graph<NodeData, DataType, ValueType> {
     /// after deleting this node as input-output pairs. Note that one of the two
     /// ids in the pair (the one on `node_id`'s end) will be invalid after
     /// calling this function.
-    pub fn remove_node(&mut self, node_id: NodeId) -> Vec<(InputId, OutputId)> {
+    pub fn remove_node(&mut self, node_id: NodeId) -> (Node<NodeData>, Vec<(InputId, OutputId)>) {
         let mut disconnect_events = vec![];
 
         self.connections.retain(|i, o| {
@@ -90,9 +104,9 @@ impl<NodeData, DataType, ValueType> Graph<NodeData, DataType, ValueType> {
         for output in self[node_id].output_ids().collect::<SVec<_>>() {
             self.outputs.remove(output);
         }
-        self.nodes.remove(node_id);
+        let removed_node = self.nodes.remove(node_id).expect("Node should exist");
 
-        disconnect_events
+        (removed_node, disconnect_events)
     }
 
     pub fn remove_connection(&mut self, input_id: InputId) -> Option<OutputId> {
@@ -123,8 +137,16 @@ impl<NodeData, DataType, ValueType> Graph<NodeData, DataType, ValueType> {
         .ok_or(EguiGraphError::InvalidParameterId(param))
     }
 
+    pub fn try_get_input(&self, input: InputId) -> Option<&InputParam<DataType, ValueType>> {
+        self.inputs.get(input)
+    }
+
     pub fn get_input(&self, input: InputId) -> &InputParam<DataType, ValueType> {
         &self.inputs[input]
+    }
+
+    pub fn try_get_output(&self, output: OutputId) -> Option<&OutputParam<DataType>> {
+        self.outputs.get(output)
     }
 
     pub fn get_output(&self, output: OutputId) -> &OutputParam<DataType> {

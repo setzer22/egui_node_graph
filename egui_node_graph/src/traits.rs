@@ -72,7 +72,7 @@ where
         node_id: NodeId,
         graph: &Graph<Self, Self::DataType, Self::ValueType>,
         user_state: &Self::UserState,
-    ) -> Vec<NodeResponse<Self::Response>>
+    ) -> Vec<NodeResponse<Self::Response, Self>>
     where
         Self::Response: UserResponseTrait;
 
@@ -130,4 +130,4 @@ pub trait NodeTemplateTrait: Clone {
 
 /// The custom user response types when drawing nodes in the graph must
 /// implement this trait.
-pub trait UserResponseTrait: Clone + Copy + std::fmt::Debug + PartialEq + Eq {}
+pub trait UserResponseTrait: Clone + std::fmt::Debug {}
