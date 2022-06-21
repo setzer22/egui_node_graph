@@ -248,18 +248,15 @@ where
             self.connection_in_progress = None;
         }
 
-        if mouse.button_released(PointerButton::Secondary) && cursor_in_editor && !cursor_in_finder
-        {
+        if mouse.secondary_down() && cursor_in_editor && !cursor_in_finder {
             self.node_finder = Some(NodeFinder::new_at(cursor_pos));
         }
         if ui.ctx().input().key_pressed(Key::Escape) {
             self.node_finder = None;
         }
 
-        if r.dragged() {
-            if ui.ctx().input().pointer.middle_down() {
-                self.pan_zoom.pan += ui.ctx().input().pointer.delta();
-            }
+        if r.dragged() && ui.ctx().input().pointer.middle_down() {
+            self.pan_zoom.pan += ui.ctx().input().pointer.delta();
         }
 
         // Deselect and deactivate finder if the editor backround is clicked,
