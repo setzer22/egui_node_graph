@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{borrow::Cow, collections::HashMap};
 
 use eframe::egui::{self, DragValue, TextStyle};
 use egui_node_graph::*;
@@ -97,10 +97,10 @@ impl DataTypeTrait<MyGraphState> for MyDataType {
         }
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> Cow<'_, str> {
         match self {
-            MyDataType::Scalar => "scalar",
-            MyDataType::Vec2 => "2d vector",
+            MyDataType::Scalar => Cow::Borrowed("scalar"),
+            MyDataType::Vec2 => Cow::Borrowed("2d vector"),
         }
     }
 }
@@ -294,7 +294,7 @@ impl NodeDataTrait for MyNodeData {
         node_id: NodeId,
         _graph: &Graph<MyNodeData, MyDataType, MyValueType>,
         user_state: &Self::UserState,
-    ) -> Vec<NodeResponse<MyResponse>>
+    ) -> Vec<NodeResponse<MyResponse, MyNodeData>>
     where
         MyResponse: UserResponseTrait,
     {
@@ -383,7 +383,7 @@ impl eframe::App for NodeGraphExample {
                     Err(err) => format!("Execution error: {}", err),
                 };
                 ctx.debug_painter().text(
-                    egui::pos2(10.0, 10.0),
+                    egui::pos2(10.0, 35.0),
                     egui::Align2::LEFT_TOP,
                     text,
                     TextStyle::Button.resolve(&ctx.style()),

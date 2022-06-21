@@ -16,11 +16,38 @@ pub trait WidgetValueTrait {
 /// [`Graph`]. This trait tells the library how to visually expose data types
 /// to the user.
 pub trait DataTypeTrait<UserState>: PartialEq + Eq {
-    // The associated port color of this datatype
+    /// The associated port color of this datatype
     fn data_type_color(&self, user_state: &UserState) -> egui::Color32;
 
-    // The name of this datatype
-    fn name(&self) -> &str;
+    /// The name of this datatype. Return type is specified as Cow<str> because
+    /// some implementations will need to allocate a new string to provide an
+    /// answer while others won't.
+    ///
+    /// ## Example (borrowed value)
+    /// Use this when you can get the name of the datatype from its fields or as
+    /// a &'static str. Prefer this method when possible.
+    /// ```ignore
+    /// pub struct DataType { name: String }
+    ///
+    /// impl DataTypeTrait<()> for DataType {
+    ///     fn name(&self) -> std::borrow::Cow<str> {
+    ///         Cow::Borrowed(&self.name)
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// ## Example (owned value)
+    /// Use this when you can't derive the name of the datatype from its fields.
+    /// ```ignore
+    /// pub struct DataType { some_tag: i32 }
+    ///
+    /// impl DataTypeTrait<()> for DataType {
+    ///     fn name(&self) -> std::borrow::Cow<str> {
+    ///         Cow::Owned(format!("Super amazing type #{}", self.some_tag))
+    ///     }
+    /// }
+    /// ```
+    fn name(&self) -> std::borrow::Cow<str>;
 }
 
 /// This trait must be implemented for the `NodeData` generic parameter of the
@@ -45,7 +72,7 @@ where
         node_id: NodeId,
         graph: &Graph<Self, Self::DataType, Self::ValueType>,
         user_state: &Self::UserState,
-    ) -> Vec<NodeResponse<Self::Response>>
+    ) -> Vec<NodeResponse<Self::Response, Self>>
     where
         Self::Response: UserResponseTrait;
 
@@ -103,4 +130,4 @@ pub trait NodeTemplateTrait: Clone {
 
 /// The custom user response types when drawing nodes in the graph must
 /// implement this trait.
-pub trait UserResponseTrait: Clone + Copy + std::fmt::Debug + PartialEq + Eq {}
+pub trait UserResponseTrait: Clone + std::fmt::Debug {}
