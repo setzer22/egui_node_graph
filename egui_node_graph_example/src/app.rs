@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{borrow::Cow, collections::HashMap};
 
 use eframe::egui::{self, DragValue, TextStyle};
 use egui_node_graph::*;
@@ -89,18 +89,18 @@ pub struct MyGraphState {
 // =========== Then, you need to implement some traits ============
 
 // A trait for the data types, to tell the library how to display them
-impl DataTypeTrait for MyDataType {
-    fn data_type_color(&self) -> egui::Color32 {
+impl DataTypeTrait<MyGraphState> for MyDataType {
+    fn data_type_color(&self, _user_state: &MyGraphState) -> egui::Color32 {
         match self {
             MyDataType::Scalar => egui::Color32::from_rgb(38, 109, 211),
             MyDataType::Vec2 => egui::Color32::from_rgb(238, 207, 109),
         }
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> Cow<'_, str> {
         match self {
-            MyDataType::Scalar => "scalar",
-            MyDataType::Vec2 => "2d vector",
+            MyDataType::Scalar => Cow::Borrowed("scalar"),
+            MyDataType::Vec2 => Cow::Borrowed("2d vector"),
         }
     }
 }
@@ -250,7 +250,8 @@ impl NodeTemplateIter for AllMyNodeTemplates {
 }
 
 impl WidgetValueTrait for MyValueType {
-    fn value_widget(&mut self, param_name: &str, ui: &mut egui::Ui) {
+    type Response = MyResponse;
+    fn value_widget(&mut self, param_name: &str, ui: &mut egui::Ui) -> Vec<MyResponse> {
         // This trait is used to tell the library which UI to display for the
         // inline parameter widgets.
         match self {
@@ -270,6 +271,8 @@ impl WidgetValueTrait for MyValueType {
                 });
             }
         }
+        // This allows you to return your responses from the inline widgets.
+        Vec::new()
     }
 }
 
@@ -380,7 +383,7 @@ impl eframe::App for NodeGraphExample {
                     Err(err) => format!("Execution error: {}", err),
                 };
                 ctx.debug_painter().text(
-                    egui::pos2(10.0, 10.0),
+                    egui::pos2(10.0, 35.0),
                     egui::Align2::LEFT_TOP,
                     text,
                     TextStyle::Button.resolve(&ctx.style()),

@@ -4,18 +4,50 @@ use super::*;
 /// [`Graph`]. The trait allows drawing custom inline widgets for the different
 /// types of the node graph.
 pub trait WidgetValueTrait {
-    fn value_widget(&mut self, param_name: &str, ui: &mut egui::Ui);
+    type Response;
+    /// This method will be called for each input parameter with a widget. The
+    /// return value is a vector of custom response objects which can be used
+    /// to implement handling of side effects. If unsure, the response Vec can
+    /// be empty.
+    fn value_widget(&mut self, param_name: &str, ui: &mut egui::Ui) -> Vec<Self::Response>;
 }
 
 /// This trait must be implemented by the `DataType` generic parameter of the
 /// [`Graph`]. This trait tells the library how to visually expose data types
 /// to the user.
-pub trait DataTypeTrait: PartialEq + Eq {
-    // The associated port color of this datatype
-    fn data_type_color(&self) -> egui::Color32;
+pub trait DataTypeTrait<UserState>: PartialEq + Eq {
+    /// The associated port color of this datatype
+    fn data_type_color(&self, user_state: &UserState) -> egui::Color32;
 
-    // The name of this datatype
-    fn name(&self) -> &str;
+    /// The name of this datatype. Return type is specified as Cow<str> because
+    /// some implementations will need to allocate a new string to provide an
+    /// answer while others won't. 
+    ///
+    /// ## Example (borrowed value)
+    /// Use this when you can get the name of the datatype from its fields or as
+    /// a &'static str. Prefer this method when possible.
+    /// ```rust
+    /// pub struct DataType { name: String }
+    ///
+    /// impl DataTypeTrait<()> for DataType {
+    ///     fn name(&self) -> std::borrow::Cow<str> {
+    ///         Cow::Borrowed(&self.name)
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// ## Example (owned value)
+    /// Use this when you can't derive the name of the datatype from its fields.
+    /// ```rust
+    /// pub struct DataType { some_tag: i32 }
+    ///
+    /// impl DataTypeTrait<()> for DataType {
+    ///     fn name(&self) -> std::borrow::Cow<str> {
+    ///         Cow::Owned(format!("Super amazing type #{}", self.some_tag))
+    ///     }
+    /// }
+    /// ```
+    fn name(&self) -> std::borrow::Cow<str>;
 }
 
 /// This trait must be implemented for the `NodeData` generic parameter of the
@@ -43,6 +75,18 @@ where
     ) -> Vec<NodeResponse<Self::Response>>
     where
         Self::Response: UserResponseTrait;
+
+    /// Set background color on titlebar
+    /// If the return value is None, the default color is set.
+    fn titlebar_color(
+        &self,
+        _ui: &egui::Ui,
+        _node_id: NodeId,
+        _graph: &Graph<Self, Self::DataType, Self::ValueType>,
+        _user_state: &Self::UserState,
+    ) -> Option<egui::Color32> {
+        None
+    }
 }
 
 /// This trait can be implemented by any user type. The trait tells the library
