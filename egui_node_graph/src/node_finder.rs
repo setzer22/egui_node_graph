@@ -68,7 +68,10 @@ where
                     .show(ui, |ui| {
                         for kind in all_kinds.all_kinds() {
                             let kind_name = kind.node_finder_label().to_string();
-                            if kind_name.to_lowercase().contains(self.query.to_lowercase().as_str()) {
+                            if kind_name
+                                .to_lowercase()
+                                .contains(self.query.to_lowercase().as_str())
+                            {
                                 if ui.selectable_label(false, kind_name).clicked() {
                                     submitted_archetype = Some(kind);
                                 } else if query_submit {
