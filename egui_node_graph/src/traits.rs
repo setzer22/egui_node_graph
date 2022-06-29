@@ -108,6 +108,8 @@ pub trait NodeTemplateTrait: Clone {
     type DataType;
     /// Must be set to the custom user `ValueType` type
     type ValueType;
+    /// Must be set to the custom user `UserState` type
+    type UserState;
 
     /// Returns a descriptive name for the node kind, used in the node finder.
     fn node_finder_label(&self) -> &str;
@@ -124,6 +126,7 @@ pub trait NodeTemplateTrait: Clone {
     fn build_node(
         &self,
         graph: &mut Graph<Self::NodeData, Self::DataType, Self::ValueType>,
+        user_state: &Self::UserState,
         node_id: NodeId,
     );
 }

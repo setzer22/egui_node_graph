@@ -111,6 +111,7 @@ impl NodeTemplateTrait for MyNodeTemplate {
     type NodeData = MyNodeData;
     type DataType = MyDataType;
     type ValueType = MyValueType;
+    type UserState = MyGraphState;
 
     fn node_finder_label(&self) -> &str {
         match self {
@@ -137,6 +138,7 @@ impl NodeTemplateTrait for MyNodeTemplate {
     fn build_node(
         &self,
         graph: &mut Graph<Self::NodeData, Self::DataType, Self::ValueType>,
+        _user_state: &Self::UserState,
         node_id: NodeId,
     ) {
         // The nodes are created empty by default. This function needs to take

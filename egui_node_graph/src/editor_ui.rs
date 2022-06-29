@@ -68,8 +68,12 @@ where
     >,
     UserResponse: UserResponseTrait,
     ValueType: WidgetValueTrait<Response = UserResponse>,
-    NodeTemplate:
-        NodeTemplateTrait<NodeData = NodeData, DataType = DataType, ValueType = ValueType>,
+    NodeTemplate: NodeTemplateTrait<
+        NodeData = NodeData,
+        DataType = DataType,
+        ValueType = ValueType,
+        UserState = UserState,
+    >,
     DataType: DataTypeTrait<UserState>,
 {
     #[must_use]
@@ -142,7 +146,7 @@ where
                     let new_node = self.graph.add_node(
                         node_kind.node_graph_label(),
                         node_kind.user_data(),
-                        |graph, node_id| node_kind.build_node(graph, node_id),
+                        |graph, node_id| node_kind.build_node(graph, &self.user_state, node_id),
                     );
                     self.node_positions.insert(
                         new_node,
