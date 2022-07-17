@@ -1,6 +1,6 @@
 use super::*;
 
-impl<NodeData, DataType, ValueType> Graph<NodeData, DataType, ValueType> {
+impl<Node, DataType, ValueType> Graph<Node, DataType, ValueType> {
     pub fn new() -> Self {
         Self {
             nodes: SlotMap::default(),
@@ -13,20 +13,10 @@ impl<NodeData, DataType, ValueType> Graph<NodeData, DataType, ValueType> {
     pub fn add_node(
         &mut self,
         label: String,
-        user_data: NodeData,
-        f: impl FnOnce(&mut Graph<NodeData, DataType, ValueType>, NodeId),
+        node: Node,
+        f: impl FnOnce(&mut Graph<Node, DataType, ValueType>, NodeId),
     ) -> NodeId {
-        let node_id = self.nodes.insert_with_key(|node_id| {
-            Node {
-                id: node_id,
-                label,
-                // These get filled in later by the user function
-                inputs: Vec::default(),
-                outputs: Vec::default(),
-                user_data,
-            }
-        });
-
+        let node_id = self.nodes.insert(node);
         f(self, node_id);
 
         node_id

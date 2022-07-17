@@ -7,14 +7,14 @@ use super::*;
 use egui::epaint::{CubicBezierShape, RectShape};
 use egui::*;
 
-pub type PortLocations = std::collections::HashMap<AnyParameterId, Pos2>;
+pub type ConnectionLocations = std::collections::HashMap<ConnectionId, Pos2>;
 
 /// Nodes communicate certain events to the parent graph when drawn. There is
 /// one special `User` variant which can be used by users as the return value
 /// when executing some custom actions in the UI of the node.
 #[derive(Clone, Debug)]
-pub enum NodeResponse<UserResponse: UserResponseTrait, NodeData: NodeDataTrait> {
-    ConnectEventStarted(NodeId, AnyParameterId),
+pub enum NodeResponse<Node: NodeTrait> {
+    ConnectEventStarted(ConnectionId),
     ConnectEventEnded {
         output: OutputId,
         input: InputId,
@@ -29,7 +29,7 @@ pub enum NodeResponse<UserResponse: UserResponseTrait, NodeData: NodeDataTrait> 
     /// contents are passed along with the event.
     DeleteNodeFull {
         node_id: NodeId,
-        node: Node<NodeData>,
+        node: Node,
     },
     DisconnectEvent {
         output: OutputId,
@@ -37,39 +37,24 @@ pub enum NodeResponse<UserResponse: UserResponseTrait, NodeData: NodeDataTrait> 
     },
     /// Emitted when a node is interacted with, and should be raised
     RaiseNode(NodeId),
-    User(UserResponse),
+    Content(ResponseOf<Node>),
 }
 
 /// The return value of [`draw_graph_editor`]. This value can be used to make
 /// user code react to specific events that happened when drawing the graph.
 #[derive(Clone, Debug)]
-pub struct GraphResponse<UserResponse: UserResponseTrait, NodeData: NodeDataTrait> {
-    pub node_responses: Vec<NodeResponse<UserResponse, NodeData>>,
+pub struct GraphResponse<Node: NodeTrait> {
+    pub node_responses: Vec<NodeResponse<Node>>,
 }
 
-pub struct GraphNodeWidget<'a, NodeData, DataType, ValueType> {
-    pub position: &'a mut Pos2,
-    pub graph: &'a mut Graph<NodeData, DataType, ValueType>,
-    pub port_locations: &'a mut PortLocations,
-    pub node_id: NodeId,
-    pub ongoing_drag: Option<(NodeId, AnyParameterId)>,
-    pub selected: bool,
-    pub pan: egui::Vec2,
-}
-
-impl<NodeData, DataType, ValueType, NodeTemplate, UserResponse, UserState>
-    GraphEditorState<NodeData, DataType, ValueType, NodeTemplate, UserState>
+impl<Node, DataType, ValueType, NodeTemplate, UserResponse, UserState>
+    GraphEditorState<Node, DataType, ValueType, NodeTemplate, UserState>
 where
-    NodeData: NodeDataTrait<
-        Response = UserResponse,
-        UserState = UserState,
-        DataType = DataType,
-        ValueType = ValueType,
-    >,
+    Node: NodeTrait,
     UserResponse: UserResponseTrait,
     ValueType: WidgetValueTrait<Response = UserResponse>,
     NodeTemplate: NodeTemplateTrait<
-        NodeData = NodeData,
+        Node = Node,
         DataType = DataType,
         ValueType = ValueType,
         UserState = UserState,

@@ -36,6 +36,12 @@ pub use node_finder::*;
 pub mod editor_ui;
 pub use editor_ui::*;
 
+pub mod vertical_port;
+pub use vertical_port::{VerticalPort, VerticalInputPort};
+
+pub mod column_node;
+pub use column_node::*;
+
 /// Several traits that must be implemented by the user to customize the
 /// behavior of this library.
 pub mod traits;

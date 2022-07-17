@@ -11,30 +11,28 @@ pub struct PanZoom {
 }
 
 #[cfg_attr(feature = "persistence", derive(Serialize, Deserialize))]
-pub struct GraphEditorState<NodeData, DataType, ValueType, NodeTemplate, UserState> {
-    pub graph: Graph<NodeData, DataType, ValueType>,
+pub struct GraphEditorState<Node, Context: GraphContext> {
+    pub graph: Graph<Node>,
     /// Nodes are drawn in this order. Draw order is important because nodes
     /// that are drawn last are on top.
     pub node_order: Vec<NodeId>,
     /// An ongoing connection interaction: The mouse has dragged away from a
     /// port and the user is holding the click
-    pub connection_in_progress: Option<(NodeId, AnyParameterId)>,
+    pub connection_in_progress: Option<(NodeId, ConnectionId)>,
     /// The currently selected node. Some interface actions depend on the
     /// currently selected node.
     pub selected_node: Option<NodeId>,
     /// The position of each node.
     pub node_positions: SecondaryMap<NodeId, egui::Pos2>,
     /// The node finder is used to create new nodes.
-    pub node_finder: Option<NodeFinder<NodeTemplate>>,
+    pub node_finder: Option<NodeFinder<Context::NodeTemplate>>,
     /// The panning of the graph viewport.
     pub pan_zoom: PanZoom,
-    pub user_state: UserState,
+    pub context: Context,
 }
 
-impl<NodeData, DataType, ValueType, NodeKind, UserState>
-    GraphEditorState<NodeData, DataType, ValueType, NodeKind, UserState>
-{
-    pub fn new(default_zoom: f32, user_state: UserState) -> Self {
+impl<Node, Context: GraphContext> GraphEditorState<Node, Context> {
+    pub fn new(default_zoom: f32, context: Context) -> Self {
         Self {
             graph: Graph::new(),
             node_order: Vec::new(),
@@ -46,7 +44,7 @@ impl<NodeData, DataType, ValueType, NodeKind, UserState>
                 pan: egui::Vec2::ZERO,
                 zoom: default_zoom,
             },
-            user_state,
+            context,
         }
     }
 }
