@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 
 use crate::color_hex_utils::*;
 use crate::utils::ColorUtils;
@@ -7,18 +7,45 @@ use super::*;
 use egui::epaint::{CubicBezierShape, RectShape};
 use egui::*;
 
-pub type ConnectionLocations = std::collections::HashMap<ConnectionId, Pos2>;
+pub type HookLocations = HashMap<ConnectionId, Pos2>;
+
+/// Ports communicate connection and disconnection events to the parent graph
+/// when drawn.
+#[derive(Clone, Debug)]
+pub enum PortResponse<Node: NodeTrait> {
+    /// The user is creating a new connection from the hook of ConnectionId
+    ConnectEventStarted(ConnectionId),
+    /// The user is moving the connection that used to be attached to ConnectionId
+    MoveEvent(ConnectionId),
+    /// A connection has been accepted by a port
+    ConnectEventEnded {
+        output: OutputId,
+        input: InputId,
+    },
+    /// The value of a port has changed
+    Value(ValueResponseOf<Node>)
+}
+
+impl<Node: NodeTrait> PortResponse<Node> {
+    pub fn connect_event_ended(a: ConnectionId, b: ConnectionId) -> Option<Self> {
+        if let Some(ConnectionId::Input(a), ConnectionId::Output(b)) = (a, b) {
+            Some(PortResponse::ConnectEventEnded{output: b, input: a})
+        }
+
+        if let Some(ConnectionId::Output(a), ConnectionId::Input(b)) = (a, b) {
+            Some(PortResponse::ConnectEventEnded{output: a, input: b})
+        }
+
+        None
+    }
+}
 
 /// Nodes communicate certain events to the parent graph when drawn. There is
 /// one special `User` variant which can be used by users as the return value
 /// when executing some custom actions in the UI of the node.
 #[derive(Clone, Debug)]
 pub enum NodeResponse<Node: NodeTrait> {
-    ConnectEventStarted(ConnectionId),
-    ConnectEventEnded {
-        output: OutputId,
-        input: InputId,
-    },
+    Port(PortResponse<Node>),
     CreatedNode(NodeId),
     SelectNode(NodeId),
     /// As a user of this library, prefer listening for `DeleteNodeFull` which
@@ -31,13 +58,24 @@ pub enum NodeResponse<Node: NodeTrait> {
         node_id: NodeId,
         node: Node,
     },
-    DisconnectEvent {
-        output: OutputId,
-        input: InputId,
-    },
     /// Emitted when a node is interacted with, and should be raised
     RaiseNode(NodeId),
-    Content(ResponseOf<Node>),
+    Content(ContentResponseOf<Node>),
+}
+
+/// Automatically convert a Port Response into a NodeResponse
+impl<N: NodeTrait> From<PortResponse<N>> for NodeResponse<N> {
+    fn from(value: PortResponse) -> Self {
+        Self::Port(value)
+    }
+}
+
+pub struct NodeUiState<'a, DataType> {
+    pub pan: Pos2,
+    pub hook_locations: &'a mut HookLocations,
+    pub node_id: NodeId,
+    pub ongoing_drag: Option<(ConnectionId, &'a DataType)>,
+    pub selected: bool,
 }
 
 /// The return value of [`draw_graph_editor`]. This value can be used to make
