@@ -100,7 +100,7 @@ impl DataTypeTrait<MyGraphState> for MyDataType {
         // Turns the color of connections in infinite loops red
         if let Some((inf_input, inf_output)) = user_state.infinity_loop {
             if let PortConnection::Connection(input_id, output_id) = port_connection {
-                if  input_id == inf_input && output_id == inf_output {
+                if input_id == inf_input && output_id == inf_output {
                     return egui::Color32::from_rgb(255, 0, 0);
                 }
             }

@@ -205,7 +205,7 @@ where
                 .any_param_type(AnyParameterId::Output(output))
                 .unwrap();
             let connection_color = port_type
-                .data_type_color(&self.user_state, PortConnection::Connection( output, input));
+                .data_type_color(&self.user_state, PortConnection::Connection(output, input));
             let src_pos = port_locations[&AnyParameterId::Output(output)];
             let dst_pos = port_locations[&AnyParameterId::Input(input)];
             draw_connection(ui.painter(), src_pos, dst_pos, connection_color);
