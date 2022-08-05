@@ -1,4 +1,4 @@
-use std::{borrow::Cow, collections::HashMap};
+use std::borrow::Cow;
 
 use eframe::egui::{self, DragValue, TextStyle};
 use egui_node_graph::*;
@@ -84,6 +84,8 @@ pub enum MyResponse {
 #[derive(Default)]
 pub struct MyGraphState {
     pub active_node: Option<NodeId>,
+
+    pub infinity_loop: Option<(OutputId, InputId)>,
 }
 
 // =========== Then, you need to implement some traits ============
@@ -92,9 +94,17 @@ pub struct MyGraphState {
 impl DataTypeTrait<MyGraphState> for MyDataType {
     fn data_type_color(
         &self,
-        _user_state: &MyGraphState,
-        _port_connection: PortConnection,
+        user_state: &MyGraphState,
+        port_connection: PortConnection,
     ) -> egui::Color32 {
+        // Turns the color of connections in infinite loops red
+        if let Some((inf_input, inf_output)) = user_state.infinity_loop {
+            if let PortConnection::Connection(input_id, output_id) = port_connection {
+                if input_id == inf_input && output_id == inf_output {
+                    return egui::Color32::from_rgb(255, 0, 0);
+                }
+            }
+        }
         match self {
             MyDataType::Scalar => egui::Color32::from_rgb(38, 109, 211),
             MyDataType::Vec2 => egui::Color32::from_rgb(238, 207, 109),
@@ -339,17 +349,18 @@ impl NodeDataTrait for MyNodeData {
 type MyGraph = Graph<MyNodeData, MyDataType, MyValueType>;
 type MyEditorState =
     GraphEditorState<MyNodeData, MyDataType, MyValueType, MyNodeTemplate, MyGraphState>;
-
 pub struct NodeGraphExample {
     // The `GraphEditorState` is the top-level object. You "register" all your
     // custom types by specifying it as its generic parameters.
     state: MyEditorState,
+    evaluator: DfsEvaluator,
 }
 
 impl Default for NodeGraphExample {
     fn default() -> Self {
         Self {
             state: GraphEditorState::new(1.0, MyGraphState::default()),
+            evaluator: DfsEvaluator::default(),
         }
     }
 }
@@ -384,7 +395,11 @@ impl eframe::App for NodeGraphExample {
 
         if let Some(node) = self.state.user_state.active_node {
             if self.state.graph.nodes.contains_key(node) {
-                let text = match evaluate_node(&self.state.graph, node, &mut HashMap::new()) {
+                let text = match self.evaluator.compute(
+                    &self.state.graph,
+                    node,
+                    &mut self.state.user_state,
+                ) {
                     Ok(value) => format!("The result is: {:?}", value),
                     Err(err) => format!("Execution error: {}", err),
                 };
@@ -402,153 +417,221 @@ impl eframe::App for NodeGraphExample {
     }
 }
 
-type OutputsCache = HashMap<OutputId, MyValueType>;
+use egui_node_graph::{EguiGraphError, NodeId, OutputId};
+use std::collections::{BTreeMap, BTreeSet};
+type OutputsCache = BTreeMap<OutputId, MyValueType>;
 
-/// Recursively evaluates all dependencies of this node, then evaluates the node itself.
-pub fn evaluate_node(
-    graph: &MyGraph,
-    node_id: NodeId,
-    outputs_cache: &mut OutputsCache,
-) -> anyhow::Result<MyValueType> {
-    // To solve a similar problem as creating node types above, we define an
-    // Evaluator as a convenience. It may be overkill for this small example,
-    // but something like this makes the code much more readable when the
-    // number of nodes starts growing.
+#[derive(Default)]
+struct DfsEvaluator {
+    evaluated: BTreeSet<NodeId>,
+    stack: Vec<NodeId>,
 
-    struct Evaluator<'a> {
-        graph: &'a MyGraph,
-        outputs_cache: &'a mut OutputsCache,
+    // Reverse order of calculation
+    sequence: Vec<NodeId>,
+    outputs_cache: OutputsCache,
+}
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct InputPortId(pub usize);
+/// Evaluate all dependencies of this node by BFS
+impl DfsEvaluator {
+    /// Explore the nodes, evaluate, and return the result of the evaluation.
+    pub fn compute(
+        &mut self,
+        graph: &MyGraph,
         node_id: NodeId,
+        user_state: &mut MyGraphState,
+    ) -> anyhow::Result<MyValueType> {
+        user_state.infinity_loop = None;
+        self.clear_cache();
+        self.explore(graph, node_id, user_state)?;
+        self.evaluate_all(graph, user_state)?;
+        let ans = self.get_output(graph, node_id)?;
+        Ok(ans)
     }
-    impl<'a> Evaluator<'a> {
-        fn new(graph: &'a MyGraph, outputs_cache: &'a mut OutputsCache, node_id: NodeId) -> Self {
-            Self {
-                graph,
-                outputs_cache,
-                node_id,
+
+    /// Return the result of the evaluation. This example returns the first output.
+    pub fn get_output(&self, graph: &MyGraph, node_id: NodeId) -> anyhow::Result<MyValueType> {
+        let output_id = graph[node_id].output_ids().next().unwrap();
+        // If there are multiple outputs:
+        // let output_id = graph[node_id].get_output(param_name);
+        let output = self
+            .outputs_cache
+            .get(&output_id)
+            .ok_or_else(|| anyhow::format_err!("It may be in an infinite loop in get_output."))?;
+        Ok(*output)
+    }
+
+    /// Always run before exploring.
+    pub fn clear_cache(&mut self) {
+        self.stack.clear();
+        self.evaluated.clear();
+        self.outputs_cache.clear();
+        self.sequence.clear();
+    }
+
+    /// Explore all dependencies of this node by BFS to find the order of computation
+    fn explore(
+        &mut self,
+        graph: &MyGraph,
+        node_id: NodeId,
+        user_state: &mut MyGraphState,
+    ) -> anyhow::Result<()> {
+        self.evaluated.clear();
+        self.sequence.push(node_id);
+        self.stack.push(node_id);
+
+        while let Some(current_node_id) = self.stack.pop() {
+            if graph[current_node_id]
+                .input_ids()
+                .flat_map(|input_id| graph.connection(input_id))
+                .count()
+                != 0
+            {
+                // Proceed to the endpoint(= the node with no input)
+                let connectoins = graph[current_node_id].input_ids().flat_map(|input_id| {
+                    if let Some(output_id) = graph.connection(input_id) {
+                        Some((output_id, input_id))
+                    } else {
+                        None
+                    }
+                });
+                for (prev_output_id, current_input_id) in connectoins {
+                    let prev_node_id = graph[prev_output_id].node;
+                    if self.evaluated.insert(prev_node_id) {
+                        // Stores the destination node in the stack and the sequence.
+                        self.sequence.push(prev_node_id);
+                        self.stack.push(prev_node_id);
+                    } else {
+                        // If it hits a node that has been explored before reaching the endpoint, it is looping.
+                        user_state.infinity_loop = Some((prev_output_id, current_input_id));
+                        return Err(anyhow::format_err!(
+                            "It may be in an infinite loop in explore."
+                        ));
+                    }
+                }
+            } else {
+                // When get to the end, clear evaluated.
+                self.evaluated.clear();
             }
         }
-        fn evaluate_input(&mut self, name: &str) -> anyhow::Result<MyValueType> {
-            // Calling `evaluate_input` recursively evaluates other nodes in the
-            // graph until the input value for a paramater has been computed.
-            evaluate_input(self.graph, self.node_id, name, self.outputs_cache)
-        }
-        fn populate_output(
-            &mut self,
-            name: &str,
-            value: MyValueType,
-        ) -> anyhow::Result<MyValueType> {
-            // After computing an output, we don't just return it, but we also
-            // populate the outputs cache with it. This ensures the evaluation
-            // only ever computes an output once.
-            //
-            // The return value of the function is the "final" output of the
-            // node, the thing we want to get from the evaluation. The example
-            // would be slightly more contrived when we had multiple output
-            // values, as we would need to choose which of the outputs is the
-            // one we want to return. Other outputs could be used as
-            // intermediate values.
-            //
-            // Note that this is just one possible semantic interpretation of
-            // the graphs, you can come up with your own evaluation semantics!
-            populate_output(self.graph, self.outputs_cache, self.node_id, name, value)
-        }
-        fn input_vector(&mut self, name: &str) -> anyhow::Result<egui::Vec2> {
-            self.evaluate_input(name)?.try_to_vec2()
-        }
-        fn input_scalar(&mut self, name: &str) -> anyhow::Result<f32> {
-            self.evaluate_input(name)?.try_to_scalar()
-        }
-        fn output_vector(&mut self, name: &str, value: egui::Vec2) -> anyhow::Result<MyValueType> {
-            self.populate_output(name, MyValueType::Vec2 { value })
-        }
-        fn output_scalar(&mut self, name: &str, value: f32) -> anyhow::Result<MyValueType> {
-            self.populate_output(name, MyValueType::Scalar { value })
-        }
+        Ok(())
     }
 
-    let node = &graph[node_id];
-    let mut evaluator = Evaluator::new(graph, outputs_cache, node_id);
-    match node.user_data.template {
-        MyNodeTemplate::AddScalar => {
-            let a = evaluator.input_scalar("A")?;
-            let b = evaluator.input_scalar("B")?;
-            evaluator.output_scalar("out", a + b)
+    /// Evaluate based on the calculation sequence
+    /// Note that the order of computation is stored in reverse
+    fn evaluate_all(
+        &mut self,
+        graph: &MyGraph,
+        user_state: &mut MyGraphState,
+    ) -> anyhow::Result<()> {
+        self.evaluated.clear();
+        for node_id in self.sequence.iter().rev().copied() {
+            // If it's already evaluated, ignore it.
+            if self.evaluated.insert(node_id) {
+                let mut evaluator = NodeEvaluator {
+                    graph,
+                    node_id,
+                    outputs_cache: &mut self.outputs_cache,
+                    user_state,
+                };
+                evaluator.evaluate(graph)?;
+            }
         }
-        MyNodeTemplate::SubtractScalar => {
-            let a = evaluator.input_scalar("A")?;
-            let b = evaluator.input_scalar("B")?;
-            evaluator.output_scalar("out", a - b)
-        }
-        MyNodeTemplate::VectorTimesScalar => {
-            let scalar = evaluator.input_scalar("scalar")?;
-            let vector = evaluator.input_vector("vector")?;
-            evaluator.output_vector("out", vector * scalar)
-        }
-        MyNodeTemplate::AddVector => {
-            let v1 = evaluator.input_vector("v1")?;
-            let v2 = evaluator.input_vector("v2")?;
-            evaluator.output_vector("out", v1 + v2)
-        }
-        MyNodeTemplate::SubtractVector => {
-            let v1 = evaluator.input_vector("v1")?;
-            let v2 = evaluator.input_vector("v2")?;
-            evaluator.output_vector("out", v1 - v2)
-        }
-        MyNodeTemplate::MakeVector => {
-            let x = evaluator.input_scalar("x")?;
-            let y = evaluator.input_scalar("y")?;
-            evaluator.output_vector("out", egui::vec2(x, y))
-        }
-        MyNodeTemplate::MakeScalar => {
-            let value = evaluator.input_scalar("value")?;
-            evaluator.output_scalar("out", value)
-        }
+        Ok(())
     }
 }
 
-fn populate_output(
-    graph: &MyGraph,
-    outputs_cache: &mut OutputsCache,
-    node_id: NodeId,
-    param_name: &str,
-    value: MyValueType,
-) -> anyhow::Result<MyValueType> {
-    let output_id = graph[node_id].get_output(param_name)?;
-    outputs_cache.insert(output_id, value);
-    Ok(value)
+/// Evaluate a node
+struct NodeEvaluator<'a> {
+    pub outputs_cache: &'a mut OutputsCache,
+    pub graph: &'a MyGraph,
+    pub node_id: NodeId,
+
+    pub user_state: &'a mut MyGraphState,
 }
-
-// Evaluates the input value of
-fn evaluate_input(
-    graph: &MyGraph,
-    node_id: NodeId,
-    param_name: &str,
-    outputs_cache: &mut OutputsCache,
-) -> anyhow::Result<MyValueType> {
-    let input_id = graph[node_id].get_input(param_name)?;
-
-    // The output of another node is connected.
-    if let Some(other_output_id) = graph.connection(input_id) {
-        // The value was already computed due to the evaluation of some other
-        // node. We simply return value from the cache.
-        if let Some(other_value) = outputs_cache.get(&other_output_id) {
-            Ok(*other_value)
-        }
-        // This is the first time encountering this node, so we need to
-        // recursively evaluate it.
-        else {
-            // Calling this will populate the cache
-            evaluate_node(graph, graph[other_output_id].node, outputs_cache)?;
-
+impl NodeEvaluator<'_> {
+    fn input_vector(&mut self, param_name: &str) -> anyhow::Result<egui::Vec2> {
+        self.get_input(param_name)?.try_to_vec2()
+    }
+    fn input_scalar(&mut self, param_name: &str) -> anyhow::Result<f32> {
+        self.get_input(param_name)?.try_to_scalar()
+    }
+    /// When this node's is evaluated, it should have already finished computing its dependencies.
+    /// If they are not in the cache, an infinite loop may have occurred.
+    fn get_input(&mut self, param_name: &str) -> anyhow::Result<MyValueType> {
+        let input_id = self.graph[self.node_id].get_input(param_name)?;
+        // The output of another node is connected.
+        if let Some(output_id) = self.graph.connection(input_id) {
             // Now that we know the value is cached, return it
-            Ok(*outputs_cache
-                .get(&other_output_id)
-                .expect("Cache should be populated"))
+            if let Some(value) = self.outputs_cache.get(&output_id) {
+                Ok(*value)
+            } else {
+                self.user_state.infinity_loop = Some((output_id, input_id));
+                Err(anyhow::format_err!(
+                    "It may be in an infinite loop in get_input."
+                ))
+            }
+        } else {
+            // No existing connection, take the inline value instead.
+            Ok(self.graph[input_id].value)
         }
     }
-    // No existing connection, take the inline value instead.
-    else {
-        Ok(graph[input_id].value)
+
+    fn output_vector(&mut self, name: &str, value: egui::Vec2) -> Result<(), EguiGraphError> {
+        self.populate_output(name, MyValueType::Vec2 { value })
+    }
+    fn output_scalar(&mut self, name: &str, value: f32) -> Result<(), EguiGraphError> {
+        self.populate_output(name, MyValueType::Scalar { value })
+    }
+    /// After computing an output, populate the outputs cache with it.
+    /// This ensures the evaluation only ever computes an output once.
+    fn populate_output(
+        &mut self,
+        param_name: &str,
+        value: MyValueType,
+    ) -> Result<(), EguiGraphError> {
+        let output_id = self.graph[self.node_id].get_output(param_name)?;
+        self.outputs_cache.insert(output_id, value);
+        Ok(())
+    }
+
+    pub fn evaluate(&mut self, graph: &MyGraph) -> anyhow::Result<()> {
+        match graph[self.node_id].user_data.template {
+            MyNodeTemplate::AddScalar => {
+                let a = self.input_scalar("A")?;
+                let b = self.input_scalar("B")?;
+                self.output_scalar("out", a + b)?;
+            }
+            MyNodeTemplate::SubtractScalar => {
+                let a = self.input_scalar("A")?;
+                let b = self.input_scalar("B")?;
+                self.output_scalar("out", a - b)?;
+            }
+            MyNodeTemplate::VectorTimesScalar => {
+                let scalar = self.input_scalar("scalar")?;
+                let vector = self.input_scalar("vector")?;
+                self.output_scalar("out", vector * scalar)?;
+            }
+            MyNodeTemplate::AddVector => {
+                let v1 = self.input_vector("v1")?;
+                let v2 = self.input_vector("v2")?;
+                self.output_vector("out", v1 + v2)?;
+            }
+            MyNodeTemplate::SubtractVector => {
+                let v1 = self.input_vector("v1")?;
+                let v2 = self.input_vector("v2")?;
+                self.output_vector("out", v1 - v2)?;
+            }
+            MyNodeTemplate::MakeVector => {
+                let x = self.input_scalar("x")?;
+                let y = self.input_scalar("y")?;
+                self.output_vector("out", egui::vec2(x, y))?;
+            }
+            MyNodeTemplate::MakeScalar => {
+                let value = self.input_scalar("value")?;
+                self.output_scalar("out", value)?;
+            }
+        }
+        Ok(())
     }
 }
