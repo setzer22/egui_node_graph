@@ -489,11 +489,9 @@ impl DfsEvaluator {
             {
                 // Proceed to the endpoint(= the node with no input)
                 let connectoins = graph[current_node_id].input_ids().flat_map(|input_id| {
-                    if let Some(output_id) = graph.connection(input_id) {
-                        Some((output_id, input_id))
-                    } else {
-                        None
-                    }
+                    graph
+                        .connection(input_id)
+                        .map(|output_id| (output_id, input_id))
                 });
                 for (prev_output_id, current_input_id) in connectoins {
                     let prev_node_id = graph[prev_output_id].node;
