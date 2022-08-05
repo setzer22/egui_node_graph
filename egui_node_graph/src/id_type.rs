@@ -23,3 +23,10 @@ impl AnyParameterId {
         }
     }
 }
+
+#[derive(Clone, Copy, Debug)]
+pub enum PortConnection {
+    Port(AnyParameterId),
+    ConnectionCursor(AnyParameterId),
+    Connection(InputId, OutputId),
+}

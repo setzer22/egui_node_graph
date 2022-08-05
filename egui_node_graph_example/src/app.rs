@@ -84,13 +84,27 @@ pub enum MyResponse {
 #[derive(Default)]
 pub struct MyGraphState {
     pub active_node: Option<NodeId>,
+
+    pub infinity_loop: Option<OutputId>,
 }
 
 // =========== Then, you need to implement some traits ============
 
 // A trait for the data types, to tell the library how to display them
 impl DataTypeTrait<MyGraphState> for MyDataType {
-    fn data_type_color(&self, _user_state: &MyGraphState) -> egui::Color32 {
+    fn data_type_color(
+        &self,
+        user_state: &MyGraphState,
+        port_connection: PortConnection,
+    ) -> egui::Color32 {
+        // Turns the color of connections in infinite loops red
+        if let Some(loop_id) = user_state.infinity_loop {
+            if let PortConnection::Connection(_, output_id) = port_connection {
+                if output_id == loop_id {
+                    return egui::Color32::from_rgb(255, 0, 0);
+                }
+            }
+        }
         match self {
             MyDataType::Scalar => egui::Color32::from_rgb(38, 109, 211),
             MyDataType::Vec2 => egui::Color32::from_rgb(238, 207, 109),
@@ -339,14 +353,14 @@ pub struct NodeGraphExample {
     // The `GraphEditorState` is the top-level object. You "register" all your
     // custom types by specifying it as its generic parameters.
     state: MyEditorState,
-    visitor: BFSVisitor,
+    visitor: BFS,
 }
 
 impl Default for NodeGraphExample {
     fn default() -> Self {
         Self {
             state: GraphEditorState::new(1.0, MyGraphState::default()),
-            visitor: BFSVisitor::default(),
+            visitor: BFS::default(),
         }
     }
 }
@@ -381,10 +395,14 @@ impl eframe::App for NodeGraphExample {
 
         if let Some(node) = self.state.user_state.active_node {
             if self.state.graph.nodes.contains_key(node) {
-                let text = match self.visitor.compute(&self.state.graph, node) {
-                    Ok(value) => format!("The result is: {:?}", value),
-                    Err(err) => format!("Execution error: {}", err),
-                };
+                let text =
+                    match self
+                        .visitor
+                        .compute(&self.state.graph, node, &mut self.state.user_state)
+                    {
+                        Ok(value) => format!("The result is: {:?}", value),
+                        Err(err) => format!("Execution error: {}", err),
+                    };
                 ctx.debug_painter().text(
                     egui::pos2(10.0, 35.0),
                     egui::Align2::LEFT_TOP,
@@ -404,7 +422,7 @@ use std::collections::{BTreeSet, HashMap, VecDeque};
 type OutputsCache = HashMap<OutputId, MyValueType>;
 
 #[derive(Default)]
-struct BFSVisitor {
+struct BFS {
     explored: BTreeSet<NodeId>,
     queue: VecDeque<NodeId>,
 
@@ -415,12 +433,18 @@ struct BFSVisitor {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct InputPortId(pub usize);
 /// Evaluate all dependencies of this node by BFS
-impl BFSVisitor {
+impl BFS {
     /// Explore the nodes, evaluate, and return the result of the evaluation.
-    pub fn compute(&mut self, graph: &MyGraph, node_id: NodeId) -> anyhow::Result<MyValueType> {
+    pub fn compute(
+        &mut self,
+        graph: &MyGraph,
+        node_id: NodeId,
+        user_state: &mut MyGraphState,
+    ) -> anyhow::Result<MyValueType> {
+        user_state.infinity_loop = None;
         self.clear_cache();
         self.explore(graph, node_id);
-        self.evaluate_all(graph)?;
+        self.evaluate_all(graph, user_state)?;
         let ans = self.get_output(graph, node_id)?;
         Ok(ans)
     }
@@ -428,7 +452,7 @@ impl BFSVisitor {
     /// Return the result of the evaluation. This example returns the first output.
     pub fn get_output(&self, graph: &MyGraph, node_id: NodeId) -> anyhow::Result<MyValueType> {
         let output_id = graph[node_id].output_ids().next().unwrap();
-        // If there are multiple outputs: 
+        // If there are multiple outputs:
         // let output_id = graph[node_id].get_output(param_name);
         let output = self
             .outputs_cache
@@ -436,7 +460,7 @@ impl BFSVisitor {
             .ok_or(anyhow::format_err!("It may be in an infinite loop."))?;
         Ok(*output)
     }
-    
+
     /// Always run before exploring.
     pub fn clear_cache(&mut self) {
         self.queue.clear();
@@ -466,12 +490,17 @@ impl BFSVisitor {
 
     /// Evaluate based on the calculation sequence
     /// Note that the order of computation is stored in reverse
-    fn evaluate_all(&mut self, graph: &MyGraph) -> anyhow::Result<()> {
+    fn evaluate_all(
+        &mut self,
+        graph: &MyGraph,
+        user_state: &mut MyGraphState,
+    ) -> anyhow::Result<()> {
         for node_id in self.sequence.iter().rev().copied() {
             let mut evaluator = Evaluator {
                 graph,
                 node_id,
                 outputs_cache: &mut self.outputs_cache,
+                user_state,
             };
             evaluator.evaluate(graph)?;
         }
@@ -484,6 +513,8 @@ struct Evaluator<'a> {
     pub outputs_cache: &'a mut OutputsCache,
     pub graph: &'a MyGraph,
     pub node_id: NodeId,
+
+    pub user_state: &'a mut MyGraphState,
 }
 impl Evaluator<'_> {
     fn input_vector(&mut self, param_name: &str) -> anyhow::Result<egui::Vec2> {
@@ -497,17 +528,18 @@ impl Evaluator<'_> {
     fn get_input(&mut self, param_name: &str) -> anyhow::Result<MyValueType> {
         let input_id = self.graph[self.node_id].get_input(param_name)?;
         // The output of another node is connected.
-        let value = if let Some(output_id) = self.graph.connection(input_id) {
+        if let Some(output_id) = self.graph.connection(input_id) {
             // Now that we know the value is cached, return it
-            *self
-                .outputs_cache
-                .get(&output_id)
-                .ok_or(anyhow::format_err!("It may be in an infinite loop."))?
+            if let Some(value) = self.outputs_cache.get(&output_id) {
+                Ok(*value)
+            } else {
+                self.user_state.infinity_loop = Some(output_id);
+                Err(anyhow::format_err!("It may be in an infinite loop."))
+            }
         } else {
             // No existing connection, take the inline value instead.
-            self.graph[input_id].value
-        };
-        Ok(value)
+            Ok(self.graph[input_id].value)
+        }
     }
 
     fn output_vector(&mut self, name: &str, value: egui::Vec2) -> Result<(), EguiGraphError> {
