@@ -85,7 +85,7 @@ pub enum MyResponse {
 pub struct MyGraphState {
     pub active_node: Option<NodeId>,
 
-    pub infinity_loop: Option<OutputId>,
+    pub infinity_loop: Option<(OutputId, InputId)>,
 }
 
 // =========== Then, you need to implement some traits ============
@@ -98,9 +98,9 @@ impl DataTypeTrait<MyGraphState> for MyDataType {
         port_connection: PortConnection,
     ) -> egui::Color32 {
         // Turns the color of connections in infinite loops red
-        if let Some(loop_id) = user_state.infinity_loop {
-            if let PortConnection::Connection(_, output_id) = port_connection {
-                if output_id == loop_id {
+        if let Some((inf_input, inf_output)) = user_state.infinity_loop {
+            if let PortConnection::Connection(input_id, output_id) = port_connection {
+                if  input_id == inf_input && output_id == inf_output {
                     return egui::Color32::from_rgb(255, 0, 0);
                 }
             }
@@ -533,7 +533,7 @@ impl Evaluator<'_> {
             if let Some(value) = self.outputs_cache.get(&output_id) {
                 Ok(*value)
             } else {
-                self.user_state.infinity_loop = Some(output_id);
+                self.user_state.infinity_loop = Some((output_id, input_id));
                 Err(anyhow::format_err!("It may be in an infinite loop."))
             }
         } else {

@@ -28,5 +28,5 @@ impl AnyParameterId {
 pub enum PortConnection {
     Port(AnyParameterId),
     ConnectionCursor(AnyParameterId),
-    Connection(InputId, OutputId),
+    Connection(OutputId, InputId),
 }
