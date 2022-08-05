@@ -17,7 +17,11 @@ pub trait WidgetValueTrait {
 /// to the user.
 pub trait DataTypeTrait<UserState>: PartialEq + Eq {
     /// The associated port color of this datatype
-    fn data_type_color(&self, user_state: &UserState) -> egui::Color32;
+    fn data_type_color(
+        &self,
+        user_state: &UserState,
+        port_connection: PortConnection,
+    ) -> egui::Color32;
 
     /// The name of this datatype. Return type is specified as Cow<str> because
     /// some implementations will need to allocate a new string to provide an

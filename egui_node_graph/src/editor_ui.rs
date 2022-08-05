@@ -173,12 +173,29 @@ where
         /* Draw connections */
         if let Some((_, ref locator)) = self.connection_in_progress {
             let port_type = self.graph.any_param_type(*locator).unwrap();
-            let connection_color = port_type.data_type_color(&self.user_state);
             let start_pos = port_locations[locator];
-            let (src_pos, dst_pos) = match locator {
-                AnyParameterId::Output(_) => (start_pos, cursor_pos),
-                AnyParameterId::Input(_) => (cursor_pos, start_pos),
-            };
+
+            let connection_color;
+            let src_pos;
+            let dst_pos;
+            match locator {
+                param_id @ AnyParameterId::Output(_) => {
+                    connection_color = port_type.data_type_color(
+                        &self.user_state,
+                        PortConnection::ConnectionCursor(*param_id),
+                    );
+                    src_pos = start_pos;
+                    dst_pos = cursor_pos;
+                }
+                param_id @ AnyParameterId::Input(_) => {
+                    connection_color = port_type.data_type_color(
+                        &self.user_state,
+                        PortConnection::ConnectionCursor(*param_id),
+                    );
+                    src_pos = cursor_pos;
+                    dst_pos = start_pos;
+                }
+            }
             draw_connection(ui.painter(), src_pos, dst_pos, connection_color);
         }
 
@@ -187,7 +204,8 @@ where
                 .graph
                 .any_param_type(AnyParameterId::Output(output))
                 .unwrap();
-            let connection_color = port_type.data_type_color(&self.user_state);
+            let connection_color = port_type
+                .data_type_color(&self.user_state, PortConnection::Connection(output, input));
             let src_pos = port_locations[&AnyParameterId::Output(output)];
             let dst_pos = port_locations[&AnyParameterId::Input(input)];
             draw_connection(ui.painter(), src_pos, dst_pos, connection_color);
@@ -467,7 +485,7 @@ where
             let port_color = if resp.hovered() {
                 Color32::WHITE
             } else {
-                port_type.data_type_color(user_state)
+                port_type.data_type_color(user_state, PortConnection::Port(param_id))
             };
             ui.painter()
                 .circle(port_rect.center(), 5.0, port_color, Stroke::none());
