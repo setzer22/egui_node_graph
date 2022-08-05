@@ -353,14 +353,14 @@ pub struct NodeGraphExample {
     // The `GraphEditorState` is the top-level object. You "register" all your
     // custom types by specifying it as its generic parameters.
     state: MyEditorState,
-    visitor: BFS,
+    evaluator: BfsEvaluator,
 }
 
 impl Default for NodeGraphExample {
     fn default() -> Self {
         Self {
             state: GraphEditorState::new(1.0, MyGraphState::default()),
-            visitor: BFS::default(),
+            evaluator: BfsEvaluator::default(),
         }
     }
 }
@@ -395,14 +395,14 @@ impl eframe::App for NodeGraphExample {
 
         if let Some(node) = self.state.user_state.active_node {
             if self.state.graph.nodes.contains_key(node) {
-                let text =
-                    match self
-                        .visitor
-                        .compute(&self.state.graph, node, &mut self.state.user_state)
-                    {
-                        Ok(value) => format!("The result is: {:?}", value),
-                        Err(err) => format!("Execution error: {}", err),
-                    };
+                let text = match self.evaluator.compute(
+                    &self.state.graph,
+                    node,
+                    &mut self.state.user_state,
+                ) {
+                    Ok(value) => format!("The result is: {:?}", value),
+                    Err(err) => format!("Execution error: {}", err),
+                };
                 ctx.debug_painter().text(
                     egui::pos2(10.0, 35.0),
                     egui::Align2::LEFT_TOP,
@@ -422,7 +422,7 @@ use std::collections::{BTreeSet, HashMap, VecDeque};
 type OutputsCache = HashMap<OutputId, MyValueType>;
 
 #[derive(Default)]
-struct BFS {
+struct BfsEvaluator {
     explored: BTreeSet<NodeId>,
     queue: VecDeque<NodeId>,
 
@@ -433,7 +433,7 @@ struct BFS {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct InputPortId(pub usize);
 /// Evaluate all dependencies of this node by BFS
-impl BFS {
+impl BfsEvaluator {
     /// Explore the nodes, evaluate, and return the result of the evaluation.
     pub fn compute(
         &mut self,
@@ -457,7 +457,7 @@ impl BFS {
         let output = self
             .outputs_cache
             .get(&output_id)
-            .ok_or(anyhow::format_err!("It may be in an infinite loop."))?;
+            .ok_or_else(|| anyhow::format_err!("It may be in an infinite loop."))?;
         Ok(*output)
     }
 
