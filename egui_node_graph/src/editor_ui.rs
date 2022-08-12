@@ -176,38 +176,34 @@ where
             let port_type = self.graph.any_param_type(*locator).unwrap();
             let connection_color = port_type.data_type_color(&self.user_state);
             let start_pos = port_locations[locator];
+
+            // Find a port to connect to
+            fn snap_to_ports<Key: slotmap::Key + Into<AnyParameterId>, Value>(
+                ports: &SlotMap<Key, Value>,
+                port_locations: &PortLocations,
+                cursor_pos: Pos2,
+            ) -> Pos2 {
+                ports
+                    .iter()
+                    .find_map(|(port_id, _)| {
+                        let port_pos = port_locations[&port_id.into()];
+                        if port_pos.distance(cursor_pos) < DISTANCE_TO_CONNECT {
+                            Some(port_pos)
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap_or(cursor_pos)
+            }
             let (src_pos, dst_pos) = match locator {
-                AnyParameterId::Output(_) => {
-                    // Find a port to connect to
-                    let port = self.graph.inputs.iter().find_map(|(input_id, _)| {
-                        let port_pos = port_locations[&AnyParameterId::Input(input_id)];
-                        if port_pos.distance(cursor_pos) < DISTANCE_TO_CONNECT {
-                            Some(port_pos)
-                        } else {
-                            None
-                        }
-                    });
-                    if let Some(port_pos) = port {
-                        (start_pos, port_pos)
-                    } else {
-                        (start_pos, cursor_pos)
-                    }
-                }
-                AnyParameterId::Input(_) => {
-                    let port = self.graph.outputs.iter().find_map(|(output_id, _)| {
-                        let port_pos = port_locations[&AnyParameterId::Output(output_id)];
-                        if port_pos.distance(cursor_pos) < DISTANCE_TO_CONNECT {
-                            Some(port_pos)
-                        } else {
-                            None
-                        }
-                    });
-                    if let Some(port_pos) = port {
-                        (port_pos, start_pos)
-                    } else {
-                        (cursor_pos, start_pos)
-                    }
-                }
+                AnyParameterId::Output(_) => (
+                    start_pos,
+                    snap_to_ports(&self.graph.inputs, &port_locations, cursor_pos),
+                ),
+                AnyParameterId::Input(_) => (
+                    snap_to_ports(&self.graph.outputs, &port_locations, cursor_pos),
+                    start_pos,
+                ),
             };
             draw_connection(ui.painter(), src_pos, dst_pos, connection_color);
         }
