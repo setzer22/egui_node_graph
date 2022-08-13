@@ -23,3 +23,15 @@ impl AnyParameterId {
         }
     }
 }
+
+impl From<OutputId> for AnyParameterId {
+    fn from(output: OutputId) -> Self {
+        Self::Output(output)
+    }
+}
+
+impl From<InputId> for AnyParameterId {
+    fn from(input: InputId) -> Self {
+        Self::Input(input)
+    }
+}

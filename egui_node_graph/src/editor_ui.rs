@@ -8,6 +8,7 @@ use egui::epaint::{CubicBezierShape, RectShape};
 use egui::*;
 
 pub type PortLocations = std::collections::HashMap<AnyParameterId, Pos2>;
+const DISTANCE_TO_CONNECT: f32 = 10.0;
 
 /// Nodes communicate certain events to the parent graph when drawn. There is
 /// one special `User` variant which can be used by users as the return value
@@ -175,9 +176,34 @@ where
             let port_type = self.graph.any_param_type(*locator).unwrap();
             let connection_color = port_type.data_type_color(&self.user_state);
             let start_pos = port_locations[locator];
+
+            // Find a port to connect to
+            fn snap_to_ports<Key: slotmap::Key + Into<AnyParameterId>, Value>(
+                ports: &SlotMap<Key, Value>,
+                port_locations: &PortLocations,
+                cursor_pos: Pos2,
+            ) -> Pos2 {
+                ports
+                    .iter()
+                    .find_map(|(port_id, _)| {
+                        let port_pos = port_locations[&port_id.into()];
+                        if port_pos.distance(cursor_pos) < DISTANCE_TO_CONNECT {
+                            Some(port_pos)
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap_or(cursor_pos)
+            }
             let (src_pos, dst_pos) = match locator {
-                AnyParameterId::Output(_) => (start_pos, cursor_pos),
-                AnyParameterId::Input(_) => (cursor_pos, start_pos),
+                AnyParameterId::Output(_) => (
+                    start_pos,
+                    snap_to_ports(&self.graph.inputs, &port_locations, cursor_pos),
+                ),
+                AnyParameterId::Input(_) => (
+                    snap_to_ports(&self.graph.outputs, &port_locations, cursor_pos),
+                    start_pos,
+                ),
             };
             draw_connection(ui.painter(), src_pos, dst_pos, connection_color);
         }
@@ -464,7 +490,15 @@ where
             };
 
             let resp = ui.allocate_rect(port_rect, sense);
-            let port_color = if resp.hovered() {
+
+            // Check if the distance between the port and the mouse is the distance to connect
+            let close_enough = if let Some(pointer_pos) = ui.ctx().pointer_hover_pos() {
+                port_rect.center().distance(pointer_pos) < DISTANCE_TO_CONNECT
+            } else {
+                false
+            };
+
+            let port_color = if close_enough {
                 Color32::WHITE
             } else {
                 port_type.data_type_color(user_state)
@@ -491,7 +525,7 @@ where
                 if origin_node != node_id {
                     // Don't allow self-loops
                     if graph.any_param_type(origin_param).unwrap() == port_type
-                        && resp.hovered()
+                        && close_enough
                         && ui.input().pointer.any_released()
                     {
                         match (param_id, origin_param) {
