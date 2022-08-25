@@ -340,12 +340,15 @@ pub struct NodeGraphExample {
     // The `GraphEditorState` is the top-level object. You "register" all your
     // custom types by specifying it as its generic parameters.
     state: MyEditorState,
+
+    user_state: MyGraphState,
 }
 
 impl Default for NodeGraphExample {
     fn default() -> Self {
         Self {
-            state: GraphEditorState::new(1.0, MyGraphState::default()),
+            state: GraphEditorState::new(1.0),
+            user_state: MyGraphState::default(),
         }
     }
 }
@@ -361,7 +364,8 @@ impl eframe::App for NodeGraphExample {
         });
         let graph_response = egui::CentralPanel::default()
             .show(ctx, |ui| {
-                self.state.draw_graph_editor(ui, AllMyNodeTemplates)
+                self.state
+                    .draw_graph_editor(ui, AllMyNodeTemplates, &self.user_state)
             })
             .inner;
         for node_response in graph_response.node_responses {
@@ -370,15 +374,13 @@ impl eframe::App for NodeGraphExample {
             // connection is created
             if let NodeResponse::User(user_event) = node_response {
                 match user_event {
-                    MyResponse::SetActiveNode(node) => {
-                        self.state.user_state.active_node = Some(node)
-                    }
-                    MyResponse::ClearActiveNode => self.state.user_state.active_node = None,
+                    MyResponse::SetActiveNode(node) => self.user_state.active_node = Some(node),
+                    MyResponse::ClearActiveNode => self.user_state.active_node = None,
                 }
             }
         }
 
-        if let Some(node) = self.state.user_state.active_node {
+        if let Some(node) = self.user_state.active_node {
             if self.state.graph.nodes.contains_key(node) {
                 let text = match evaluate_node(&self.state.graph, node, &mut HashMap::new()) {
                     Ok(value) => format!("The result is: {:?}", value),
@@ -392,7 +394,7 @@ impl eframe::App for NodeGraphExample {
                     egui::Color32::WHITE,
                 );
             } else {
-                self.state.user_state.active_node = None;
+                self.user_state.active_node = None;
             }
         }
     }
