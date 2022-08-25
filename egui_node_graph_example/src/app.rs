@@ -8,6 +8,7 @@ use egui_node_graph::*;
 /// The NodeData holds a custom data struct inside each node. It's useful to
 /// store additional information that doesn't live in parameters. For this
 /// example, the node data stores the template (i.e. the "type") of the node.
+#[cfg_attr(feature = "persistence", derive(serde::Serialize, serde::Deserialize))]
 pub struct MyNodeData {
     template: MyNodeTemplate,
 }
@@ -16,6 +17,7 @@ pub struct MyNodeData {
 /// attaching two ports together. The graph UI will make sure to not allow
 /// attaching incompatible datatypes.
 #[derive(PartialEq, Eq)]
+#[cfg_attr(feature = "persistence", derive(serde::Serialize, serde::Deserialize))]
 pub enum MyDataType {
     Scalar,
     Vec2,
@@ -29,6 +31,7 @@ pub enum MyDataType {
 /// up to the user code in this example to make sure no parameter is created
 /// with a DataType of Scalar and a ValueType of Vec2.
 #[derive(Copy, Clone, Debug)]
+#[cfg_attr(feature = "persistence", derive(serde::Serialize, serde::Deserialize))]
 pub enum MyValueType {
     Vec2 { value: egui::Vec2 },
     Scalar { value: f32 },
@@ -58,6 +61,7 @@ impl MyValueType {
 /// will display in the "new node" popup. The user code needs to tell the
 /// library how to convert a NodeTemplate into a Node.
 #[derive(Clone, Copy)]
+#[cfg_attr(feature = "persistence", derive(serde::Serialize, serde::Deserialize))]
 pub enum MyNodeTemplate {
     MakeVector,
     MakeScalar,
@@ -82,6 +86,7 @@ pub enum MyResponse {
 /// parameter drawing callbacks. The contents of this struct are entirely up to
 /// the user. For this example, we use it to keep track of the 'active' node.
 #[derive(Default)]
+#[cfg_attr(feature = "persistence", derive(serde::Serialize, serde::Deserialize))]
 pub struct MyGraphState {
     pub active_node: Option<NodeId>,
 }
@@ -352,8 +357,27 @@ impl Default for NodeGraphExample {
         }
     }
 }
+#[cfg(feature = "persistence")]
+const PERSISTENCE_KEY: &str = "egui_node_graph";
+
+#[cfg(feature = "persistence")]
+impl NodeGraphExample {
+    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        let state = if let Some(storage) = cc.storage {
+            eframe::get_value(storage, PERSISTENCE_KEY)
+                .unwrap_or_else(|| GraphEditorState::new(0.0, MyGraphState::default()))
+        } else {
+            GraphEditorState::new(0.0, MyGraphState::default())
+        };
+        Self { state }
+    }
+}
 
 impl eframe::App for NodeGraphExample {
+    #[cfg(feature = "persistence")]
+    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        eframe::set_value(storage, PERSISTENCE_KEY, &self.state);
+    }
     /// Called each time the UI needs repainting, which may be many times per second.
     /// Put your widgets into a `SidePanel`, `TopPanel`, `CentralPanel`, `Window` or `Area`.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
