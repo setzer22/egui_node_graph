@@ -125,7 +125,7 @@ where
                     .unwrap_or(false),
                 pan: self.pan_zoom.pan + editor_rect.min.to_vec2(),
             }
-            .show(ui, &user_state);
+            .show(ui, user_state);
 
             // Actions executed later
             delayed_responses.extend(responses);
@@ -148,7 +148,7 @@ where
                     let new_node = self.graph.add_node(
                         node_kind.node_graph_label(),
                         node_kind.user_data(),
-                        |graph, node_id| node_kind.build_node(graph, &user_state, node_id),
+                        |graph, node_id| node_kind.build_node(graph, user_state, node_id),
                     );
                     self.node_positions.insert(
                         new_node,
@@ -175,7 +175,7 @@ where
         /* Draw connections */
         if let Some((_, ref locator)) = self.connection_in_progress {
             let port_type = self.graph.any_param_type(*locator).unwrap();
-            let connection_color = port_type.data_type_color(&user_state);
+            let connection_color = port_type.data_type_color(user_state);
             let start_pos = port_locations[locator];
 
             // Find a port to connect to
@@ -214,7 +214,7 @@ where
                 .graph
                 .any_param_type(AnyParameterId::Output(output))
                 .unwrap();
-            let connection_color = port_type.data_type_color(&user_state);
+            let connection_color = port_type.data_type_color(user_state);
             let src_pos = port_locations[&AnyParameterId::Output(output)];
             let dst_pos = port_locations[&AnyParameterId::Input(input)];
             draw_connection(ui.painter(), src_pos, dst_pos, connection_color);
