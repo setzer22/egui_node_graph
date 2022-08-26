@@ -362,19 +362,26 @@ const PERSISTENCE_KEY: &str = "egui_node_graph";
 
 #[cfg(feature = "persistence")]
 impl NodeGraphExample {
+    /// If the persistence feature is enabled, Called once before the first frame.
+    /// Load previous app state (if any).
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let state = if let Some(storage) = cc.storage {
             eframe::get_value(storage, PERSISTENCE_KEY)
-                .unwrap_or_else(|| GraphEditorState::new(0.0, MyGraphState::default()))
+                .unwrap_or_else(|| GraphEditorState::new(0.0))
         } else {
-            GraphEditorState::new(0.0, MyGraphState::default())
+            GraphEditorState::new(0.0)
         };
-        Self { state }
+        Self {
+            state,
+            user_state: MyGraphState::default(),
+        }
     }
 }
 
 impl eframe::App for NodeGraphExample {
     #[cfg(feature = "persistence")]
+    /// If the persistence function is enabled,
+    /// Called by the frame work to save state before shutdown.
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, PERSISTENCE_KEY, &self.state);
     }
