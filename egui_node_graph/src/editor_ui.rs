@@ -186,12 +186,13 @@ where
                 ports
                     .iter()
                     .find_map(|(port_id, _)| {
-                        let port_pos = port_locations[&port_id.into()];
-                        if port_pos.distance(cursor_pos) < DISTANCE_TO_CONNECT {
-                            Some(port_pos)
-                        } else {
-                            None
-                        }
+                        port_locations.get(&port_id.into()).and_then(|port_pos| {
+                            if port_pos.distance(cursor_pos) < DISTANCE_TO_CONNECT {
+                                Some(*port_pos)
+                            } else {
+                                None
+                            }
+                        })
                     })
                     .unwrap_or(cursor_pos)
             }
