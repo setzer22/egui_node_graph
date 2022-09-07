@@ -242,17 +242,19 @@ where
                 }
                 NodeResponse::DeleteNodeUi(node_id) => {
                     let (node, disc_events) = self.graph.remove_node(*node_id);
+                    // Pass the disconnection responses first so user code can perform cleanup
+                    // before node removal response.
+                    extra_responses.extend(
+                        disc_events
+                            .into_iter()
+                            .map(|(input, output)| NodeResponse::DisconnectEvent { input, output }),
+                    );
                     // Pass the full node as a response so library users can
                     // listen for it and get their user data.
                     extra_responses.push(NodeResponse::DeleteNodeFull {
                         node_id: *node_id,
                         node,
                     });
-                    extra_responses.extend(
-                        disc_events
-                            .into_iter()
-                            .map(|(input, output)| NodeResponse::DisconnectEvent { input, output }),
-                    );
                     self.node_positions.remove(*node_id);
                     // Make sure to not leave references to old nodes hanging
                     if self.selected_node.map(|x| x == *node_id).unwrap_or(false) {
