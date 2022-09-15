@@ -292,7 +292,7 @@ where
                     self.node_order.retain(|id| *id != *node_id);
                 }
                 NodeResponse::DisconnectEvent { input, output } => {
-                    let other_node = self.graph.get_input(*input).node();
+                    let other_node = self.graph.get_output(*output).node;
                     self.graph.remove_connection(*input);
                     self.connection_in_progress =
                         Some((other_node, AnyParameterId::Output(*output)));
