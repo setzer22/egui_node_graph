@@ -178,7 +178,16 @@ where
             let start_pos = port_locations[locator];
 
             // Find a port to connect to
-            fn snap_to_ports<Key: slotmap::Key + Into<AnyParameterId>, Value>(
+            fn snap_to_ports<
+                NodeData,
+                UserState,
+                DataType: DataTypeTrait<UserState>,
+                ValueType,
+                Key: slotmap::Key + Into<AnyParameterId>,
+                Value,
+            >(
+                graph: &Graph<NodeData, DataType, ValueType>,
+                port_type: &DataType,
                 ports: &SlotMap<Key, Value>,
                 port_locations: &PortLocations,
                 cursor_pos: Pos2,
@@ -186,23 +195,45 @@ where
                 ports
                     .iter()
                     .find_map(|(port_id, _)| {
-                        port_locations.get(&port_id.into()).and_then(|port_pos| {
-                            if port_pos.distance(cursor_pos) < DISTANCE_TO_CONNECT {
-                                Some(*port_pos)
-                            } else {
-                                None
-                            }
-                        })
+                        let compatible_ports = graph
+                            .any_param_type(port_id.into())
+                            .map(|other| other == port_type)
+                            .unwrap_or(false);
+
+                        if compatible_ports {
+                            port_locations.get(&port_id.into()).and_then(|port_pos| {
+                                if port_pos.distance(cursor_pos) < DISTANCE_TO_CONNECT {
+                                    Some(*port_pos)
+                                } else {
+                                    None
+                                }
+                            })
+                        } else {
+                            None
+                        }
                     })
                     .unwrap_or(cursor_pos)
             }
+
             let (src_pos, dst_pos) = match locator {
                 AnyParameterId::Output(_) => (
                     start_pos,
-                    snap_to_ports(&self.graph.inputs, &port_locations, cursor_pos),
+                    snap_to_ports(
+                        &self.graph,
+                        port_type,
+                        &self.graph.inputs,
+                        &port_locations,
+                        cursor_pos,
+                    ),
                 ),
                 AnyParameterId::Input(_) => (
-                    snap_to_ports(&self.graph.outputs, &port_locations, cursor_pos),
+                    snap_to_ports(
+                        &self.graph,
+                        port_type,
+                        &self.graph.outputs,
+                        &port_locations,
+                        cursor_pos,
+                    ),
                     start_pos,
                 ),
             };
