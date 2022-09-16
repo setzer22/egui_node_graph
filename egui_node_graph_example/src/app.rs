@@ -365,12 +365,10 @@ impl NodeGraphExample {
     /// If the persistence feature is enabled, Called once before the first frame.
     /// Load previous app state (if any).
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        let state = if let Some(storage) = cc.storage {
-            eframe::get_value(storage, PERSISTENCE_KEY)
-                .unwrap_or_else(|| GraphEditorState::new(0.0))
-        } else {
-            GraphEditorState::new(0.0)
-        };
+        let state = cc
+            .storage
+            .and_then(|storage| eframe::get_value(storage, PERSISTENCE_KEY))
+            .unwrap_or_else(|| GraphEditorState::new(0.0));
         Self {
             state,
             user_state: MyGraphState::default(),
