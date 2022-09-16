@@ -95,7 +95,7 @@ pub struct MyGraphState {
 
 // A trait for the data types, to tell the library how to display them
 impl DataTypeTrait<MyGraphState> for MyDataType {
-    fn data_type_color(&self, _user_state: &MyGraphState) -> egui::Color32 {
+    fn data_type_color(&self, _user_state: &mut MyGraphState) -> egui::Color32 {
         match self {
             MyDataType::Scalar => egui::Color32::from_rgb(38, 109, 211),
             MyDataType::Vec2 => egui::Color32::from_rgb(238, 207, 109),
@@ -143,7 +143,7 @@ impl NodeTemplateTrait for MyNodeTemplate {
     fn build_node(
         &self,
         graph: &mut Graph<Self::NodeData, Self::DataType, Self::ValueType>,
-        _user_state: &Self::UserState,
+        _user_state: &mut Self::UserState,
         node_id: NodeId,
     ) {
         // The nodes are created empty by default. This function needs to take
@@ -300,7 +300,7 @@ impl NodeDataTrait for MyNodeData {
         ui: &mut egui::Ui,
         node_id: NodeId,
         _graph: &Graph<MyNodeData, MyDataType, MyValueType>,
-        user_state: &Self::UserState,
+        user_state: &mut Self::UserState,
     ) -> Vec<NodeResponse<MyResponse, MyNodeData>>
     where
         MyResponse: UserResponseTrait,
@@ -394,7 +394,7 @@ impl eframe::App for NodeGraphExample {
         let graph_response = egui::CentralPanel::default()
             .show(ctx, |ui| {
                 self.state
-                    .draw_graph_editor(ui, AllMyNodeTemplates, &self.user_state)
+                    .draw_graph_editor(ui, AllMyNodeTemplates, &mut self.user_state)
             })
             .inner;
         for node_response in graph_response.node_responses {
