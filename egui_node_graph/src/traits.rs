@@ -17,7 +17,7 @@ pub trait WidgetValueTrait {
 /// to the user.
 pub trait DataTypeTrait<UserState>: PartialEq + Eq {
     /// The associated port color of this datatype
-    fn data_type_color(&self, user_state: &UserState) -> egui::Color32;
+    fn data_type_color(&self, user_state: &mut UserState) -> egui::Color32;
 
     /// The name of this datatype. Return type is specified as Cow<str> because
     /// some implementations will need to allocate a new string to provide an
@@ -71,7 +71,7 @@ where
         ui: &mut egui::Ui,
         node_id: NodeId,
         graph: &Graph<Self, Self::DataType, Self::ValueType>,
-        user_state: &Self::UserState,
+        user_state: &mut Self::UserState,
     ) -> Vec<NodeResponse<Self::Response, Self>>
     where
         Self::Response: UserResponseTrait;
@@ -83,7 +83,7 @@ where
         _ui: &egui::Ui,
         _node_id: NodeId,
         _graph: &Graph<Self, Self::DataType, Self::ValueType>,
-        _user_state: &Self::UserState,
+        _user_state: &mut Self::UserState,
     ) -> Option<egui::Color32> {
         None
     }
@@ -126,7 +126,7 @@ pub trait NodeTemplateTrait: Clone {
     fn build_node(
         &self,
         graph: &mut Graph<Self::NodeData, Self::DataType, Self::ValueType>,
-        user_state: &Self::UserState,
+        user_state: &mut Self::UserState,
         node_id: NodeId,
     );
 }

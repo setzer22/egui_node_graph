@@ -12,9 +12,11 @@ crate-type = ["cdylib", "rlib"]
 eframe = "0.19.0"
 egui_node_graph = { path = "../egui_node_graph" }
 anyhow = "1.0"
+serde = { version = "1.0", optional = true }
 
 [features]
 default = []
+persistence = ["serde", "egui_node_graph/persistence", "eframe/persistence"]
 
 [profile.release]
 opt-level = 2 # fast and small wasm

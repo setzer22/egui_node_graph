@@ -1,4 +1,5 @@
 use super::*;
+use std::marker::PhantomData;
 
 #[cfg(feature = "persistence")]
 use serde::{Deserialize, Serialize};
@@ -29,13 +30,13 @@ pub struct GraphEditorState<NodeData, DataType, ValueType, NodeTemplate, UserSta
     pub node_finder: Option<NodeFinder<NodeTemplate>>,
     /// The panning of the graph viewport.
     pub pan_zoom: PanZoom,
-    pub user_state: UserState,
+    pub _user_state: PhantomData<fn() -> UserState>,
 }
 
 impl<NodeData, DataType, ValueType, NodeKind, UserState>
     GraphEditorState<NodeData, DataType, ValueType, NodeKind, UserState>
 {
-    pub fn new(default_zoom: f32, user_state: UserState) -> Self {
+    pub fn new(default_zoom: f32) -> Self {
         Self {
             graph: Graph::new(),
             node_order: Vec::new(),
@@ -47,7 +48,7 @@ impl<NodeData, DataType, ValueType, NodeKind, UserState>
                 pan: egui::Vec2::ZERO,
                 zoom: default_zoom,
             },
-            user_state,
+            _user_state: PhantomData,
         }
     }
 }
