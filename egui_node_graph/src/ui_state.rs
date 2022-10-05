@@ -4,7 +4,7 @@ use std::marker::PhantomData;
 #[cfg(feature = "persistence")]
 use serde::{Deserialize, Serialize};
 
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 #[cfg_attr(feature = "persistence", derive(Serialize, Deserialize))]
 pub struct PanZoom {
     pub pan: egui::Vec2,
@@ -38,17 +38,27 @@ impl<NodeData, DataType, ValueType, NodeKind, UserState>
 {
     pub fn new(default_zoom: f32) -> Self {
         Self {
-            graph: Graph::new(),
-            node_order: Vec::new(),
-            connection_in_progress: None,
-            selected_node: None,
-            node_positions: SecondaryMap::new(),
-            node_finder: None,
             pan_zoom: PanZoom {
                 pan: egui::Vec2::ZERO,
                 zoom: default_zoom,
             },
-            _user_state: PhantomData,
+            ..Default::default()
+        }
+    }
+}
+impl<NodeData, DataType, ValueType, NodeKind, UserState> Default
+    for GraphEditorState<NodeData, DataType, ValueType, NodeKind, UserState>
+{
+    fn default() -> Self {
+        Self {
+            graph: Default::default(),
+            node_order: Default::default(),
+            connection_in_progress: Default::default(),
+            selected_node: Default::default(),
+            node_positions: Default::default(),
+            node_finder: Default::default(),
+            pan_zoom: Default::default(),
+            _user_state: Default::default(),
         }
     }
 }

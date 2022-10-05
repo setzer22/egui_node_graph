@@ -47,7 +47,15 @@ pub enum NodeResponse<UserResponse: UserResponseTrait, NodeData: NodeDataTrait> 
 pub struct GraphResponse<UserResponse: UserResponseTrait, NodeData: NodeDataTrait> {
     pub node_responses: Vec<NodeResponse<UserResponse, NodeData>>,
 }
-
+impl<UserResponse: UserResponseTrait, NodeData: NodeDataTrait> Default
+    for GraphResponse<UserResponse, NodeData>
+{
+    fn default() -> Self {
+        Self {
+            node_responses: Default::default(),
+        }
+    }
+}
 pub struct GraphNodeWidget<'a, NodeData, DataType, ValueType> {
     pub position: &'a mut Pos2,
     pub graph: &'a mut Graph<NodeData, DataType, ValueType>,

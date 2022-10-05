@@ -341,6 +341,7 @@ type MyGraph = Graph<MyNodeData, MyDataType, MyValueType>;
 type MyEditorState =
     GraphEditorState<MyNodeData, MyDataType, MyValueType, MyNodeTemplate, MyGraphState>;
 
+#[derive(Default)]
 pub struct NodeGraphExample {
     // The `GraphEditorState` is the top-level object. You "register" all your
     // custom types by specifying it as its generic parameters.
@@ -349,14 +350,6 @@ pub struct NodeGraphExample {
     user_state: MyGraphState,
 }
 
-impl Default for NodeGraphExample {
-    fn default() -> Self {
-        Self {
-            state: GraphEditorState::new(1.0),
-            user_state: MyGraphState::default(),
-        }
-    }
-}
 #[cfg(feature = "persistence")]
 const PERSISTENCE_KEY: &str = "egui_node_graph";
 
@@ -368,7 +361,7 @@ impl NodeGraphExample {
         let state = cc
             .storage
             .and_then(|storage| eframe::get_value(storage, PERSISTENCE_KEY))
-            .unwrap_or_else(|| GraphEditorState::new(0.0));
+            .unwrap_or_default();
         Self {
             state,
             user_state: MyGraphState::default(),
