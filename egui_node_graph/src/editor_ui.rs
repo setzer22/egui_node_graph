@@ -76,7 +76,7 @@ where
         ValueType = ValueType,
     >,
     UserResponse: UserResponseTrait,
-    ValueType: WidgetValueTrait<Response = UserResponse>,
+    ValueType: WidgetValueTrait<Response = UserResponse, UserState = UserState>,
     NodeTemplate: NodeTemplateTrait<
         NodeData = NodeData,
         DataType = DataType,
@@ -391,7 +391,7 @@ where
         ValueType = ValueType,
     >,
     UserResponse: UserResponseTrait,
-    ValueType: WidgetValueTrait<Response = UserResponse>,
+    ValueType: WidgetValueTrait<Response = UserResponse, UserState = UserState>,
     DataType: DataTypeTrait<UserState>,
 {
     pub const MAX_NODE_SIZE: [f32; 2] = [200.0, 200.0];
@@ -472,7 +472,7 @@ where
                         responses.extend(
                             self.graph[param_id]
                                 .value
-                                .value_widget(&param_name, ui)
+                                .value_widget(&param_name, self.node_id, ui, user_state)
                                 .into_iter()
                                 .map(NodeResponse::User),
                         );
