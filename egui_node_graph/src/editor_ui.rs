@@ -76,7 +76,8 @@ where
         ValueType = ValueType,
     >,
     UserResponse: UserResponseTrait,
-    ValueType: WidgetValueTrait<Response = UserResponse, UserState = UserState>,
+    ValueType:
+        WidgetValueTrait<Response = UserResponse, UserState = UserState, NodeData = NodeData>,
     NodeTemplate: NodeTemplateTrait<
         NodeData = NodeData,
         DataType = DataType,
@@ -391,7 +392,8 @@ where
         ValueType = ValueType,
     >,
     UserResponse: UserResponseTrait,
-    ValueType: WidgetValueTrait<Response = UserResponse, UserState = UserState>,
+    ValueType:
+        WidgetValueTrait<Response = UserResponse, UserState = UserState, NodeData = NodeData>,
     DataType: DataTypeTrait<UserState>,
 {
     pub const MAX_NODE_SIZE: [f32; 2] = [200.0, 200.0];
@@ -469,13 +471,23 @@ where
                     if self.graph.connection(param_id).is_some() {
                         ui.label(param_name);
                     } else {
-                        responses.extend(
-                            self.graph[param_id]
-                                .value
-                                .value_widget(&param_name, self.node_id, ui, user_state)
-                                .into_iter()
-                                .map(NodeResponse::User),
+                        // NOTE: We want to pass the `user_data` to
+                        // `value_widget`, but we can't since that would require
+                        // borrowing the graph twice. Here, we take the
+                        // assumption that the value is cheaply replace, and use
+                        // `std::mem::take` to temporarily replace it with a
+                        // dummy value. This requires `ValueType` to implement
+                        // Default, but results in a totally safe alternative.
+                        let mut value = std::mem::take(&mut self.graph[param_id].value);
+                        let node_responses = value.value_widget(
+                            &param_name,
+                            self.node_id,
+                            ui,
+                            user_state,
+                            &self.graph[self.node_id].user_data,
                         );
+                        self.graph[param_id].value = value;
+                        responses.extend(node_responses.into_iter().map(NodeResponse::User));
                     }
                     let height_after = ui.min_rect().bottom();
                     input_port_heights.push((height_before + height_after) / 2.0);

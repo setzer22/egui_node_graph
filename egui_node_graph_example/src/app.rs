@@ -37,6 +37,14 @@ pub enum MyValueType {
     Scalar { value: f32 },
 }
 
+impl Default for MyValueType {
+    fn default() -> Self {
+        // NOTE: This is just a dummy `Default` implementation. The library
+        // requires it to circumvent some internal borrow checker issues.
+        Self::Scalar { value: 0.0 }
+    }
+}
+
 impl MyValueType {
     /// Tries to downcast this value type to a vector
     pub fn try_to_vec2(self) -> anyhow::Result<egui::Vec2> {
@@ -118,8 +126,8 @@ impl NodeTemplateTrait for MyNodeTemplate {
     type ValueType = MyValueType;
     type UserState = MyGraphState;
 
-    fn node_finder_label(&self, _user_state: &mut Self::UserState) -> &str {
-        match self {
+    fn node_finder_label(&self, _user_state: &mut Self::UserState) -> Cow<'_, str> {
+        Cow::Borrowed(match self {
             MyNodeTemplate::MakeVector => "New vector",
             MyNodeTemplate::MakeScalar => "New scalar",
             MyNodeTemplate::AddScalar => "Scalar add",
@@ -127,7 +135,7 @@ impl NodeTemplateTrait for MyNodeTemplate {
             MyNodeTemplate::AddVector => "Vector add",
             MyNodeTemplate::SubtractVector => "Vector subtract",
             MyNodeTemplate::VectorTimesScalar => "Vector times scalar",
-        }
+        })
     }
 
     fn node_graph_label(&self, user_state: &mut Self::UserState) -> String {
@@ -259,12 +267,14 @@ impl NodeTemplateIter for AllMyNodeTemplates {
 impl WidgetValueTrait for MyValueType {
     type Response = MyResponse;
     type UserState = MyGraphState;
+    type NodeData = MyNodeData;
     fn value_widget(
         &mut self,
         param_name: &str,
         _node_id: NodeId,
         ui: &mut egui::Ui,
         _user_state: &mut MyGraphState,
+        _node_data: &MyNodeData,
     ) -> Vec<MyResponse> {
         // This trait is used to tell the library which UI to display for the
         // inline parameter widgets.
