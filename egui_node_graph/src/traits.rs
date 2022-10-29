@@ -119,13 +119,13 @@ pub trait NodeTemplateTrait: Clone {
     type UserState;
 
     /// Returns a descriptive name for the node kind, used in the node finder.
-    fn node_finder_label(&self) -> &str;
+    fn node_finder_label(&self, user_state: &mut Self::UserState) -> &str;
 
     /// Returns a descriptive name for the node kind, used in the graph.
-    fn node_graph_label(&self) -> String;
+    fn node_graph_label(&self, user_state: &mut Self::UserState) -> String;
 
     /// Returns the user data for this node kind.
-    fn user_data(&self) -> Self::NodeData;
+    fn user_data(&self, user_state: &mut Self::UserState) -> Self::NodeData;
 
     /// This function is run when this node kind gets added to the graph. The
     /// node will be empty by default, and this function can be used to fill its

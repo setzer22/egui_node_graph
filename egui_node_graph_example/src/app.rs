@@ -118,7 +118,7 @@ impl NodeTemplateTrait for MyNodeTemplate {
     type ValueType = MyValueType;
     type UserState = MyGraphState;
 
-    fn node_finder_label(&self) -> &str {
+    fn node_finder_label(&self, _user_state: &mut Self::UserState) -> &str {
         match self {
             MyNodeTemplate::MakeVector => "New vector",
             MyNodeTemplate::MakeScalar => "New scalar",
@@ -130,13 +130,13 @@ impl NodeTemplateTrait for MyNodeTemplate {
         }
     }
 
-    fn node_graph_label(&self) -> String {
+    fn node_graph_label(&self, user_state: &mut Self::UserState) -> String {
         // It's okay to delegate this to node_finder_label if you don't want to
         // show different names in the node finder and the node itself.
-        self.node_finder_label().into()
+        self.node_finder_label(user_state).into()
     }
 
-    fn user_data(&self) -> Self::NodeData {
+    fn user_data(&self, _user_state: &mut Self::UserState) -> Self::NodeData {
         MyNodeData { template: *self }
     }
 

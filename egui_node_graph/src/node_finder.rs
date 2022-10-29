@@ -14,9 +14,9 @@ pub struct NodeFinder<NodeTemplate> {
     _phantom: PhantomData<NodeTemplate>,
 }
 
-impl<NodeTemplate, NodeData> NodeFinder<NodeTemplate>
+impl<NodeTemplate, NodeData, UserState> NodeFinder<NodeTemplate>
 where
-    NodeTemplate: NodeTemplateTrait<NodeData = NodeData>,
+    NodeTemplate: NodeTemplateTrait<NodeData = NodeData, UserState = UserState>,
 {
     pub fn new_at(pos: Pos2) -> Self {
         NodeFinder {
@@ -34,6 +34,7 @@ where
         &mut self,
         ui: &mut Ui,
         all_kinds: impl NodeTemplateIter<Item = NodeTemplate>,
+        user_state: &mut UserState,
     ) -> Option<NodeTemplate> {
         let background_color;
         let text_color;
@@ -68,7 +69,7 @@ where
                     .inner_margin(vec2(10.0, 10.0))
                     .show(ui, |ui| {
                         for kind in all_kinds.all_kinds() {
-                            let kind_name = kind.node_finder_label().to_string();
+                            let kind_name = kind.node_finder_label(user_state).to_string();
                             if kind_name
                                 .to_lowercase()
                                 .contains(self.query.to_lowercase().as_str())
