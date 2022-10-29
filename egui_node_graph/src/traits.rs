@@ -3,6 +3,12 @@ use super::*;
 /// This trait must be implemented by the `ValueType` generic parameter of the
 /// [`Graph`]. The trait allows drawing custom inline widgets for the different
 /// types of the node graph.
+///
+/// The [`Default`] trait bound is required to circumvent borrow checker issues
+/// using `std::mem::take` Otherwise, it would be impossible to pass the
+/// `node_data` parameter during `value_widget`. The default value is never
+/// used, so the implementation is not important, but it should be reasonably
+/// cheap to construct.
 pub trait WidgetValueTrait : Default {
     type Response;
     type UserState;

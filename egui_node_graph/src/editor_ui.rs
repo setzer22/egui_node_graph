@@ -473,9 +473,9 @@ where
                     } else {
                         // NOTE: We want to pass the `user_data` to
                         // `value_widget`, but we can't since that would require
-                        // borrowing the graph twice. Here, we take the
-                        // assumption that the value is cheaply replace, and use
-                        // `std::mem::take` to temporarily replace it with a
+                        // borrowing the graph twice. Here, we make the
+                        // assumption that the value is cheaply replaced, and
+                        // use `std::mem::take` to temporarily replace it with a
                         // dummy value. This requires `ValueType` to implement
                         // Default, but results in a totally safe alternative.
                         let mut value = std::mem::take(&mut self.graph[param_id].value);
