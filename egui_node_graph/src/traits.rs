@@ -9,7 +9,7 @@ use super::*;
 /// `node_data` parameter during `value_widget`. The default value is never
 /// used, so the implementation is not important, but it should be reasonably
 /// cheap to construct.
-pub trait WidgetValueTrait : Default {
+pub trait WidgetValueTrait: Default {
     type Response;
     type UserState;
     type NodeData;
