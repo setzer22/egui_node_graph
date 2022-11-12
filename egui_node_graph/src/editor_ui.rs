@@ -8,6 +8,8 @@ use egui::epaint::{CubicBezierShape, RectShape};
 use egui::*;
 
 pub type PortLocations = std::collections::HashMap<AnyParameterId, Pos2>;
+pub type NodeRects = std::collections::HashMap<NodeId, Rect>;
+
 const DISTANCE_TO_CONNECT: f32 = 10.0;
 
 /// Nodes communicate certain events to the parent graph when drawn. There is
@@ -38,6 +40,10 @@ pub enum NodeResponse<UserResponse: UserResponseTrait, NodeData: NodeDataTrait> 
     },
     /// Emitted when a node is interacted with, and should be raised
     RaiseNode(NodeId),
+    MoveNode {
+        node: NodeId,
+        drag_delta: Vec2,
+    },
     User(UserResponse),
 }
 
@@ -60,6 +66,7 @@ pub struct GraphNodeWidget<'a, NodeData, DataType, ValueType> {
     pub position: &'a mut Pos2,
     pub graph: &'a mut Graph<NodeData, DataType, ValueType>,
     pub port_locations: &'a mut PortLocations,
+    pub node_rects: &'a mut NodeRects,
     pub node_id: NodeId,
     pub ongoing_drag: Option<(NodeId, AnyParameterId)>,
     pub selected: bool,
@@ -103,15 +110,20 @@ where
         let mut cursor_in_editor = editor_rect.contains(cursor_pos);
         let mut cursor_in_finder = false;
 
-        // Gets filled with the port locations as nodes are drawn
+        // Gets filled with the node metrics as they are drawn
         let mut port_locations = PortLocations::new();
+        let mut node_sizes = NodeRects::new();
 
         // The responses returned from node drawing have side effects that are best
         // executed at the end of this function.
         let mut delayed_responses: Vec<NodeResponse<UserResponse, NodeData>> = vec![];
 
-        // Used to detect when the background was clicked, to dismiss certain selfs
+        // Used to detect when the background was clicked
         let mut click_on_background = false;
+
+        // Used to detect drag events in the background
+        let mut drag_started_on_background = false;
+        let mut drag_released_on_background = false;
 
         debug_assert_eq!(
             self.node_order.iter().copied().collect::<HashSet<_>>(),
@@ -126,12 +138,13 @@ where
                 position: self.node_positions.get_mut(node_id).unwrap(),
                 graph: &mut self.graph,
                 port_locations: &mut port_locations,
+                node_rects: &mut node_sizes,
                 node_id,
                 ongoing_drag: self.connection_in_progress,
                 selected: self
-                    .selected_node
-                    .map(|selected| selected == node_id)
-                    .unwrap_or(false),
+                    .selected_nodes
+                    .iter()
+                    .any(|selected| *selected == node_id),
                 pan: self.pan_zoom.pan + editor_rect.min.to_vec2(),
             }
             .show(ui, user_state);
@@ -143,6 +156,10 @@ where
         let r = ui.allocate_rect(ui.min_rect(), Sense::click().union(Sense::drag()));
         if r.clicked() {
             click_on_background = true;
+        } else if r.drag_started() {
+            drag_started_on_background = true;
+        } else if r.drag_released() {
+            drag_released_on_background = true;
         }
 
         /* Draw the node finder, if open */
@@ -279,7 +296,7 @@ where
                     //Convenience NodeResponse for users
                 }
                 NodeResponse::SelectNode(node_id) => {
-                    self.selected_node = Some(*node_id);
+                    self.selected_nodes = Vec::from([*node_id]);
                 }
                 NodeResponse::DeleteNodeUi(node_id) => {
                     let (node, disc_events) = self.graph.remove_node(*node_id);
@@ -298,9 +315,7 @@ where
                     });
                     self.node_positions.remove(*node_id);
                     // Make sure to not leave references to old nodes hanging
-                    if self.selected_node.map(|x| x == *node_id).unwrap_or(false) {
-                        self.selected_node = None;
-                    }
+                    self.selected_nodes.retain(|id| *id != *node_id);
                     self.node_order.retain(|id| *id != *node_id);
                 }
                 NodeResponse::DisconnectEvent { input, output } => {
@@ -318,6 +333,17 @@ where
                     self.node_order.remove(old_pos);
                     self.node_order.push(*node_id);
                 }
+                NodeResponse::MoveNode { node, drag_delta } => {
+                    self.node_positions[*node] += *drag_delta;
+                    // Handle multi-node selection movement
+                    if self.selected_nodes.contains(node) && self.selected_nodes.len() > 1 {
+                        for n in self.selected_nodes.iter().copied() {
+                            if n != *node {
+                                self.node_positions[n] += *drag_delta;
+                            }
+                        }
+                    }
+                }
                 NodeResponse::User(_) => {
                     // These are handled by the user code.
                 }
@@ -325,6 +351,30 @@ where
                     unreachable!("The UI should never produce a DeleteNodeFull event.")
                 }
             }
+        }
+
+        // Handle box selection
+        if let Some(box_start) = self.ongoing_box_selection {
+            let selection_rect = Rect::from_two_pos(cursor_pos, box_start);
+            let bg_color = Color32::from_rgba_unmultiplied(200, 200, 200, 20);
+            let stroke_color = Color32::from_rgba_unmultiplied(200, 200, 200, 180);
+            ui.painter().rect(
+                selection_rect,
+                2.0,
+                bg_color,
+                Stroke::new(3.0, stroke_color),
+            );
+
+            self.selected_nodes = node_sizes
+                .into_iter()
+                .filter_map(|(node_id, rect)| {
+                    if selection_rect.intersects(rect) {
+                        Some(node_id)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
         }
 
         // Push any responses that were generated during response handling.
@@ -355,8 +405,15 @@ where
         // Deselect and deactivate finder if the editor backround is clicked,
         // *or* if the the mouse clicks off the ui
         if click_on_background || (mouse.any_click() && !cursor_in_editor) {
-            self.selected_node = None;
+            self.selected_nodes = Vec::new();
             self.node_finder = None;
+        }
+
+        if drag_started_on_background {
+            self.ongoing_box_selection = Some(cursor_pos);
+        }
+        if mouse.primary_released() || drag_released_on_background {
+            self.ongoing_box_selection = None;
         }
 
         GraphResponse {
@@ -690,12 +747,10 @@ where
                 stroke: Stroke::none(),
             });
 
+            let node_rect = titlebar_rect.union(body_rect).union(bottom_body_rect);
             let outline = if self.selected {
                 Shape::Rect(RectShape {
-                    rect: titlebar_rect
-                        .union(body_rect)
-                        .union(bottom_body_rect)
-                        .expand(1.0),
+                    rect: node_rect.expand(1.0),
                     rounding,
                     fill: Color32::WHITE.lighten(0.8),
                     stroke: Stroke::none(),
@@ -703,6 +758,9 @@ where
             } else {
                 Shape::Noop
             };
+
+            // Take note of the node rect, so the editor can use it later to compute intersections.
+            self.node_rects.insert(self.node_id, node_rect);
 
             (Shape::Vec(vec![titlebar, body, bottom_body]), outline)
         };
@@ -724,8 +782,12 @@ where
         );
 
         // Movement
-        *self.position += window_response.drag_delta();
-        if window_response.drag_delta().length_sq() > 0.0 {
+        let drag_delta = window_response.drag_delta();
+        if drag_delta.length_sq() > 0.0 {
+            responses.push(NodeResponse::MoveNode {
+                node: self.node_id,
+                drag_delta,
+            });
             responses.push(NodeResponse::RaiseNode(self.node_id));
         }
 
