@@ -394,7 +394,7 @@ where
             self.node_finder = None;
         }
 
-        if dbg!(drag_started_on_background) {
+        if drag_started_on_background {
             self.ongoing_box_selection = Some(cursor_pos);
         }
         if mouse.primary_released() || drag_released_on_background {
