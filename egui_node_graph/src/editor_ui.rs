@@ -40,6 +40,10 @@ pub enum NodeResponse<UserResponse: UserResponseTrait, NodeData: NodeDataTrait> 
     },
     /// Emitted when a node is interacted with, and should be raised
     RaiseNode(NodeId),
+    MoveNode {
+        node: NodeId,
+        drag_delta: Vec2,
+    },
     User(UserResponse),
 }
 
@@ -328,6 +332,17 @@ where
                         .expect("Node to be raised should be in `node_order`");
                     self.node_order.remove(old_pos);
                     self.node_order.push(*node_id);
+                }
+                NodeResponse::MoveNode { node, drag_delta } => {
+                    self.node_positions[*node] += *drag_delta;
+                    // Handle multi-node selection movement
+                    if self.selected_nodes.contains(node) && self.selected_nodes.len() > 1 {
+                        for n in self.selected_nodes.iter().copied() {
+                            if n != *node {
+                                self.node_positions[n] += *drag_delta;
+                            }
+                        }
+                    }
                 }
                 NodeResponse::User(_) => {
                     // These are handled by the user code.
@@ -767,8 +782,12 @@ where
         );
 
         // Movement
-        *self.position += window_response.drag_delta();
-        if window_response.drag_delta().length_sq() > 0.0 {
+        let drag_delta = window_response.drag_delta();
+        if drag_delta.length_sq() > 0.0 {
+            responses.push(NodeResponse::MoveNode {
+                node: self.node_id,
+                drag_delta,
+            });
             responses.push(NodeResponse::RaiseNode(self.node_id));
         }
 
