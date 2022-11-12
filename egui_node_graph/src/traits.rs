@@ -3,13 +3,28 @@ use super::*;
 /// This trait must be implemented by the `ValueType` generic parameter of the
 /// [`Graph`]. The trait allows drawing custom inline widgets for the different
 /// types of the node graph.
-pub trait WidgetValueTrait {
+///
+/// The [`Default`] trait bound is required to circumvent borrow checker issues
+/// using `std::mem::take` Otherwise, it would be impossible to pass the
+/// `node_data` parameter during `value_widget`. The default value is never
+/// used, so the implementation is not important, but it should be reasonably
+/// cheap to construct.
+pub trait WidgetValueTrait: Default {
     type Response;
+    type UserState;
+    type NodeData;
     /// This method will be called for each input parameter with a widget. The
     /// return value is a vector of custom response objects which can be used
     /// to implement handling of side effects. If unsure, the response Vec can
     /// be empty.
-    fn value_widget(&mut self, param_name: &str, ui: &mut egui::Ui) -> Vec<Self::Response>;
+    fn value_widget(
+        &mut self,
+        param_name: &str,
+        node_id: NodeId,
+        ui: &mut egui::Ui,
+        user_state: &mut Self::UserState,
+        node_data: &Self::NodeData,
+    ) -> Vec<Self::Response>;
 }
 
 /// This trait must be implemented by the `DataType` generic parameter of the
@@ -112,13 +127,17 @@ pub trait NodeTemplateTrait: Clone {
     type UserState;
 
     /// Returns a descriptive name for the node kind, used in the node finder.
-    fn node_finder_label(&self) -> &str;
+    ///
+    /// The return type is Cow<str> to allow returning owned or borrowed values
+    /// more flexibly. Refer to the documentation for `DataTypeTrait::name` for
+    /// more information
+    fn node_finder_label(&self, user_state: &mut Self::UserState) -> std::borrow::Cow<str>;
 
     /// Returns a descriptive name for the node kind, used in the graph.
-    fn node_graph_label(&self) -> String;
+    fn node_graph_label(&self, user_state: &mut Self::UserState) -> String;
 
     /// Returns the user data for this node kind.
-    fn user_data(&self) -> Self::NodeData;
+    fn user_data(&self, user_state: &mut Self::UserState) -> Self::NodeData;
 
     /// This function is run when this node kind gets added to the graph. The
     /// node will be empty by default, and this function can be used to fill its
