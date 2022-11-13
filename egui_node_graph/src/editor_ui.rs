@@ -112,7 +112,7 @@ where
 
         // Gets filled with the node metrics as they are drawn
         let mut port_locations = PortLocations::new();
-        let mut node_sizes = NodeRects::new();
+        let mut node_rects = NodeRects::new();
 
         // The responses returned from node drawing have side effects that are best
         // executed at the end of this function.
@@ -138,7 +138,7 @@ where
                 position: self.node_positions.get_mut(node_id).unwrap(),
                 graph: &mut self.graph,
                 port_locations: &mut port_locations,
-                node_rects: &mut node_sizes,
+                node_rects: &mut node_rects,
                 node_id,
                 ongoing_drag: self.connection_in_progress,
                 selected: self
@@ -365,7 +365,7 @@ where
                 Stroke::new(3.0, stroke_color),
             );
 
-            self.selected_nodes = node_sizes
+            self.selected_nodes = node_rects
                 .into_iter()
                 .filter_map(|(node_id, rect)| {
                     if selection_rect.intersects(rect) {
@@ -391,7 +391,7 @@ where
             self.connection_in_progress = None;
         }
 
-        if mouse.secondary_down() && cursor_in_editor && !cursor_in_finder {
+        if mouse.secondary_clicked() && cursor_in_editor && !cursor_in_finder {
             self.node_finder = Some(NodeFinder::new_at(cursor_pos));
         }
         if ui.ctx().input().key_pressed(Key::Escape) {
@@ -409,7 +409,7 @@ where
             self.node_finder = None;
         }
 
-        if drag_started_on_background {
+        if drag_started_on_background && mouse.primary_down() {
             self.ongoing_box_selection = Some(cursor_pos);
         }
         if mouse.primary_released() || drag_released_on_background {
