@@ -195,7 +195,7 @@ where
                     should_close_node_finder = true;
                     delayed_responses.push(NodeResponse::CreatedNode(new_node));
                 }
-                let finder_rect = ui.max_rect();
+                let finder_rect = ui.min_rect();
                 // If the cursor is not in the main editor, check if the cursor is in the finder
                 // if the cursor is in the finder, then we can consider that also in the editor.
                 if finder_rect.contains(cursor_pos) {
@@ -401,7 +401,7 @@ where
             self.connection_in_progress = None;
         }
 
-        if mouse.secondary_clicked() && cursor_in_editor && !cursor_in_finder {
+        if mouse.secondary_released() && cursor_in_editor && !cursor_in_finder {
             self.node_finder = Some(NodeFinder::new_at(cursor_pos));
         }
         if ui.ctx().input().key_pressed(Key::Escape) {
