@@ -51,7 +51,15 @@ pub enum NodeResponse<UserResponse: UserResponseTrait, NodeData: NodeDataTrait> 
 /// user code react to specific events that happened when drawing the graph.
 #[derive(Clone, Debug)]
 pub struct GraphResponse<UserResponse: UserResponseTrait, NodeData: NodeDataTrait> {
+    /// Events that occurred during this frame of rendering the graph. Check the
+    /// [`UserResponse`] type for a description of each event.
     pub node_responses: Vec<NodeResponse<UserResponse, NodeData>>,
+    /// Is the mouse currently hovering the graph editor? Note that the node
+    /// finder is considered part of the graph editor, even when it floats
+    /// outside the graph editor rect.
+    pub cursor_in_editor: bool,
+    /// Is the mouse currently hovering the node finder?
+    pub cursor_in_finder: bool,
 }
 impl<UserResponse: UserResponseTrait, NodeData: NodeDataTrait> Default
     for GraphResponse<UserResponse, NodeData>
@@ -59,6 +67,8 @@ impl<UserResponse: UserResponseTrait, NodeData: NodeDataTrait> Default
     fn default() -> Self {
         Self {
             node_responses: Default::default(),
+            cursor_in_editor: false,
+            cursor_in_finder: false,
         }
     }
 }
@@ -418,6 +428,8 @@ where
 
         GraphResponse {
             node_responses: delayed_responses,
+            cursor_in_editor,
+            cursor_in_finder,
         }
     }
 }
