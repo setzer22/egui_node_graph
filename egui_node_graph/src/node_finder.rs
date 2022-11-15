@@ -10,7 +10,7 @@ pub struct NodeFinder<NodeTemplate> {
     pub query: String,
     /// Reset every frame. When set, the node finder will be moved at that position
     pub position: Option<Pos2>,
-    pub just_spawned: bool,
+    pub frames_since_spawned: u32,
     _phantom: PhantomData<NodeTemplate>,
 }
 
@@ -22,7 +22,7 @@ where
         NodeFinder {
             query: "".into(),
             position: Some(pos),
-            just_spawned: true,
+            frames_since_spawned: 0,
             _phantom: Default::default(),
         }
     }
@@ -58,9 +58,13 @@ where
         frame.show(ui, |ui| {
             ui.vertical(|ui| {
                 let resp = ui.text_edit_singleline(&mut self.query);
-                if self.just_spawned {
+                // HACK: The request_focus call doesn't succeed if we do it
+                // right after spawning the node finder, so we do it for a few
+                // frames until it works. This is could be a bug inside egui.
+                // The value 3 is the smallest number of frames that works.
+                if self.frames_since_spawned <= 3 {
                     resp.request_focus();
-                    self.just_spawned = false;
+                    self.frames_since_spawned += 1;
                 }
 
                 let mut query_submit = resp.lost_focus() && ui.input().key_down(Key::Enter);
