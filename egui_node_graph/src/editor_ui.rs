@@ -196,9 +196,9 @@ where
                     delayed_responses.push(NodeResponse::CreatedNode(new_node));
                 }
                 let finder_rect = ui.max_rect();
-                // If the cursor is not in the main editor, check if the cursor *is* in the finder
+                // If the cursor is not in the main editor, check if the cursor is in the finder
                 // if the cursor is in the finder, then we can consider that also in the editor.
-                if !cursor_in_editor && finder_rect.contains(cursor_pos) {
+                if finder_rect.contains(cursor_pos) {
                     cursor_in_editor = true;
                     cursor_in_finder = true;
                 }
