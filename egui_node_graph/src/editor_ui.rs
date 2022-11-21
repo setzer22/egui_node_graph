@@ -776,11 +776,10 @@ where
             self.graph,
             user_state,
         );
-        if can_delete {
-            if Self::close_button(ui, outer_rect).clicked() {
-                responses.push(NodeResponse::DeleteNodeUi(self.node_id));
-            };
-        }
+
+        if can_delete && Self::close_button(ui, outer_rect).clicked() {
+            responses.push(NodeResponse::DeleteNodeUi(self.node_id));
+        };
 
         let window_response = ui.interact(
             outer_rect,
