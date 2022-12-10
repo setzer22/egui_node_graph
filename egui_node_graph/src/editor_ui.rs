@@ -51,7 +51,15 @@ pub enum NodeResponse<UserResponse: UserResponseTrait, NodeData: NodeDataTrait> 
 /// user code react to specific events that happened when drawing the graph.
 #[derive(Clone, Debug)]
 pub struct GraphResponse<UserResponse: UserResponseTrait, NodeData: NodeDataTrait> {
+    /// Events that occurred during this frame of rendering the graph. Check the
+    /// [`UserResponse`] type for a description of each event.
     pub node_responses: Vec<NodeResponse<UserResponse, NodeData>>,
+    /// Is the mouse currently hovering the graph editor? Note that the node
+    /// finder is considered part of the graph editor, even when it floats
+    /// outside the graph editor rect.
+    pub cursor_in_editor: bool,
+    /// Is the mouse currently hovering the node finder?
+    pub cursor_in_finder: bool,
 }
 impl<UserResponse: UserResponseTrait, NodeData: NodeDataTrait> Default
     for GraphResponse<UserResponse, NodeData>
@@ -59,6 +67,8 @@ impl<UserResponse: UserResponseTrait, NodeData: NodeDataTrait> Default
     fn default() -> Self {
         Self {
             node_responses: Default::default(),
+            cursor_in_editor: false,
+            cursor_in_finder: false,
         }
     }
 }
@@ -112,7 +122,7 @@ where
 
         // Gets filled with the node metrics as they are drawn
         let mut port_locations = PortLocations::new();
-        let mut node_sizes = NodeRects::new();
+        let mut node_rects = NodeRects::new();
 
         // The responses returned from node drawing have side effects that are best
         // executed at the end of this function.
@@ -138,7 +148,7 @@ where
                 position: self.node_positions.get_mut(node_id).unwrap(),
                 graph: &mut self.graph,
                 port_locations: &mut port_locations,
-                node_rects: &mut node_sizes,
+                node_rects: &mut node_rects,
                 node_id,
                 ongoing_drag: self.connection_in_progress,
                 selected: self
@@ -185,10 +195,10 @@ where
                     should_close_node_finder = true;
                     delayed_responses.push(NodeResponse::CreatedNode(new_node));
                 }
-                let finder_rect = ui.max_rect();
-                // If the cursor is not in the main editor, check if the cursor *is* in the finder
+                let finder_rect = ui.min_rect();
+                // If the cursor is not in the main editor, check if the cursor is in the finder
                 // if the cursor is in the finder, then we can consider that also in the editor.
-                if !cursor_in_editor && finder_rect.contains(cursor_pos) {
+                if finder_rect.contains(cursor_pos) {
                     cursor_in_editor = true;
                     cursor_in_finder = true;
                 }
@@ -365,7 +375,7 @@ where
                 Stroke::new(3.0, stroke_color),
             );
 
-            self.selected_nodes = node_sizes
+            self.selected_nodes = node_rects
                 .into_iter()
                 .filter_map(|(node_id, rect)| {
                     if selection_rect.intersects(rect) {
@@ -391,7 +401,7 @@ where
             self.connection_in_progress = None;
         }
 
-        if mouse.secondary_down() && cursor_in_editor && !cursor_in_finder {
+        if mouse.secondary_released() && cursor_in_editor && !cursor_in_finder {
             self.node_finder = Some(NodeFinder::new_at(cursor_pos));
         }
         if ui.ctx().input().key_pressed(Key::Escape) {
@@ -409,7 +419,7 @@ where
             self.node_finder = None;
         }
 
-        if drag_started_on_background {
+        if drag_started_on_background && mouse.primary_down() {
             self.ongoing_box_selection = Some(cursor_pos);
         }
         if mouse.primary_released() || drag_released_on_background {
@@ -418,6 +428,8 @@ where
 
         GraphResponse {
             node_responses: delayed_responses,
+            cursor_in_editor,
+            cursor_in_finder,
         }
     }
 }

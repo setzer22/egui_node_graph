@@ -65,23 +65,31 @@ where
 
                 let mut query_submit = resp.lost_focus() && ui.input().key_down(Key::Enter);
 
+                let max_height = ui.input().screen_rect.height() * 0.5;
+                let scroll_area_width = resp.rect.width() - 30.0;
+
                 Frame::default()
                     .inner_margin(vec2(10.0, 10.0))
                     .show(ui, |ui| {
-                        for kind in all_kinds.all_kinds() {
-                            let kind_name = kind.node_finder_label(user_state).to_string();
-                            if kind_name
-                                .to_lowercase()
-                                .contains(self.query.to_lowercase().as_str())
-                            {
-                                if ui.selectable_label(false, kind_name).clicked() {
-                                    submitted_archetype = Some(kind);
-                                } else if query_submit {
-                                    submitted_archetype = Some(kind);
-                                    query_submit = false;
+                        ScrollArea::vertical()
+                            .max_height(max_height)
+                            .show(ui, |ui| {
+                                ui.set_width(scroll_area_width);
+                                for kind in all_kinds.all_kinds() {
+                                    let kind_name = kind.node_finder_label(user_state).to_string();
+                                    if kind_name
+                                        .to_lowercase()
+                                        .contains(self.query.to_lowercase().as_str())
+                                    {
+                                        if ui.selectable_label(false, kind_name).clicked() {
+                                            submitted_archetype = Some(kind);
+                                        } else if query_submit {
+                                            submitted_archetype = Some(kind);
+                                            query_submit = false;
+                                        }
+                                    }
                                 }
-                            }
-                        }
+                            });
                     });
             });
         });
