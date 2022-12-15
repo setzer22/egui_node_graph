@@ -628,7 +628,7 @@ where
                 port_type.data_type_color(user_state)
             };
             ui.painter()
-                .circle(port_rect.center(), 5.0, port_color, Stroke::none());
+                .circle(port_rect.center(), 5.0, port_color, Stroke::NONE);
 
             if resp.drag_started() {
                 if is_connected_input {
@@ -734,7 +734,7 @@ where
                     .user_data
                     .titlebar_color(ui, self.node_id, self.graph, user_state)
                     .unwrap_or_else(|| background_color.lighten(0.8)),
-                stroke: Stroke::none(),
+                stroke: Stroke::NONE,
             });
 
             let body_rect = Rect::from_min_size(
@@ -745,7 +745,7 @@ where
                 rect: body_rect,
                 rounding: Rounding::none(),
                 fill: background_color,
-                stroke: Stroke::none(),
+                stroke: Stroke::NONE,
             });
 
             let bottom_body_rect = Rect::from_min_size(
@@ -756,7 +756,7 @@ where
                 rect: bottom_body_rect,
                 rounding,
                 fill: background_color,
-                stroke: Stroke::none(),
+                stroke: Stroke::NONE,
             });
 
             let node_rect = titlebar_rect.union(body_rect).union(bottom_body_rect);
@@ -765,7 +765,7 @@ where
                     rect: node_rect.expand(1.0),
                     rounding,
                     fill: Color32::WHITE.lighten(0.8),
-                    stroke: Stroke::none(),
+                    stroke: Stroke::NONE,
                 })
             } else {
                 Shape::Noop
