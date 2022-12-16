@@ -472,13 +472,34 @@ where
         ui: &mut Ui,
         user_state: &mut UserState,
     ) -> Vec<NodeResponse<UserResponse, NodeData>> {
-        let mut child_ui = ui.child_ui_with_id_source(
-            Rect::from_min_size(*self.position + self.pan, Self::MAX_NODE_SIZE.into()),
-            Layout::default(),
-            self.node_id,
-        );
+        let node_id = self.node_id;
+        let graph_node_area = Area::new(Id::new(node_id))
+            .order(Order::Middle)
+            .current_pos(*self.position + self.pan);
+        let InnerResponse {
+            inner: mut node_responses,
+            response,
+        } = graph_node_area.show(ui.ctx(), |ui| Self::show_graph_node(self, ui, user_state));
 
-        Self::show_graph_node(self, &mut child_ui, user_state)
+        // Movement
+        let drag_delta = response.drag_delta();
+        if drag_delta.length_sq() > 0.0 {
+            node_responses.push(NodeResponse::MoveNode {
+                node: node_id,
+                drag_delta,
+            });
+            node_responses.push(NodeResponse::RaiseNode(node_id));
+        }
+
+        // Node selection
+        //
+        // HACK: Only set the select response when no other response is active.
+        // This prevents some issues.
+        if node_responses.is_empty() && response.clicked_by(PointerButton::Primary) {
+            node_responses.push(NodeResponse::SelectNode(node_id));
+            node_responses.push(NodeResponse::RaiseNode(node_id));
+        }
+        node_responses
     }
 
     /// Draws this node. Also fills in the list of port locations with all of its ports.
@@ -507,82 +528,76 @@ where
         let outline_shape = ui.painter().add(Shape::Noop);
         let background_shape = ui.painter().add(Shape::Noop);
 
-        let outer_rect_bounds = ui.available_rect_before_wrap();
-        let mut inner_rect = outer_rect_bounds.shrink2(margin);
-
-        // Make sure we don't shrink to the negative:
-        inner_rect.max.x = inner_rect.max.x.max(inner_rect.min.x);
-        inner_rect.max.y = inner_rect.max.y.max(inner_rect.min.y);
-
-        let mut child_ui = ui.child_ui(inner_rect, *ui.layout());
         let mut title_height = 0.0;
 
         let mut input_port_heights = vec![];
         let mut output_port_heights = vec![];
 
-        child_ui.vertical(|ui| {
-            ui.horizontal(|ui| {
-                ui.add(Label::new(
-                    RichText::new(&self.graph[self.node_id].label)
-                        .text_style(TextStyle::Button)
-                        .color(text_color),
-                ));
-                ui.add_space(8.0); // The size of the little cross icon
-            });
-            ui.add_space(margin.y);
-            title_height = ui.min_size().y;
+        Frame::none().inner_margin(margin).show(ui, |ui| {
+            ui.vertical(|ui| {
+                ui.horizontal(|ui| {
+                    ui.add(Label::new(
+                        RichText::new(&self.graph[self.node_id].label)
+                            .text_style(TextStyle::Button)
+                            .color(text_color),
+                    ));
+                    ui.add_space(8.0); // The size of the little cross icon
+                });
+                ui.add_space(margin.y);
+                title_height = ui.min_size().y;
 
-            // First pass: Draw the inner fields. Compute port heights
-            let inputs = self.graph[self.node_id].inputs.clone();
-            for (param_name, param_id) in inputs {
-                if self.graph[param_id].shown_inline {
-                    let height_before = ui.min_rect().bottom();
-                    if self.graph.connection(param_id).is_some() {
-                        ui.label(param_name);
-                    } else {
-                        // NOTE: We want to pass the `user_data` to
-                        // `value_widget`, but we can't since that would require
-                        // borrowing the graph twice. Here, we make the
-                        // assumption that the value is cheaply replaced, and
-                        // use `std::mem::take` to temporarily replace it with a
-                        // dummy value. This requires `ValueType` to implement
-                        // Default, but results in a totally safe alternative.
-                        let mut value = std::mem::take(&mut self.graph[param_id].value);
-                        let node_responses = value.value_widget(
-                            &param_name,
-                            self.node_id,
-                            ui,
-                            user_state,
-                            &self.graph[self.node_id].user_data,
-                        );
-                        self.graph[param_id].value = value;
-                        responses.extend(node_responses.into_iter().map(NodeResponse::User));
+                // First pass: Draw the inner fields. Compute port heights
+                let inputs = self.graph[self.node_id].inputs.clone();
+                for (param_name, param_id) in inputs {
+                    if self.graph[param_id].shown_inline {
+                        let height_before = ui.min_rect().bottom();
+                        if self.graph.connection(param_id).is_some() {
+                            ui.label(param_name);
+                        } else {
+                            // NOTE: We want to pass the `user_data` to
+                            // `value_widget`, but we can't since that would require
+                            // borrowing the graph twice. Here, we make the
+                            // assumption that the value is cheaply replaced, and
+                            // use `std::mem::take` to temporarily replace it with a
+                            // dummy value. This requires `ValueType` to implement
+                            // Default, but results in a totally safe alternative.
+                            let mut value = std::mem::take(&mut self.graph[param_id].value);
+                            let node_responses = value.value_widget(
+                                &param_name,
+                                self.node_id,
+                                ui,
+                                user_state,
+                                &self.graph[self.node_id].user_data,
+                            );
+                            self.graph[param_id].value = value;
+                            responses.extend(node_responses.into_iter().map(NodeResponse::User));
+                        }
+                        let height_after = ui.min_rect().bottom();
+                        input_port_heights.push((height_before + height_after) / 2.0);
                     }
-                    let height_after = ui.min_rect().bottom();
-                    input_port_heights.push((height_before + height_after) / 2.0);
                 }
-            }
 
-            let outputs = self.graph[self.node_id].outputs.clone();
-            for (param_name, _param) in outputs {
-                let height_before = ui.min_rect().bottom();
-                ui.label(&param_name);
-                let height_after = ui.min_rect().bottom();
-                output_port_heights.push((height_before + height_after) / 2.0);
-            }
+                let outputs = self.graph[self.node_id].outputs.clone();
+                for (param_name, _param) in outputs {
+                    let height_before = ui.min_rect().bottom();
+                    ui.label(&param_name);
+                    let height_after = ui.min_rect().bottom();
+                    output_port_heights.push((height_before + height_after) / 2.0);
+                }
 
-            responses.extend(
-                self.graph[self.node_id]
-                    .user_data
-                    .bottom_ui(ui, self.node_id, self.graph, user_state)
-                    .into_iter(),
-            );
+                responses.extend(
+                    self.graph[self.node_id]
+                        .user_data
+                        .bottom_ui(ui, self.node_id, self.graph, user_state)
+                        .into_iter(),
+                );
+            })
         });
 
         // Second pass, iterate again to draw the ports. This happens outside
         // the child_ui because we want ports to overflow the node background.
 
-        let outer_rect = child_ui.min_rect().expand2(margin);
+        let outer_rect = ui.min_rect();
         let port_left = outer_rect.left();
         let port_right = outer_rect.right();
 
@@ -792,31 +807,6 @@ where
         if can_delete && Self::close_button(ui, outer_rect).clicked() {
             responses.push(NodeResponse::DeleteNodeUi(self.node_id));
         };
-
-        let window_response = ui.interact(
-            outer_rect,
-            Id::new((self.node_id, "window")),
-            Sense::click_and_drag(),
-        );
-
-        // Movement
-        let drag_delta = window_response.drag_delta();
-        if drag_delta.length_sq() > 0.0 {
-            responses.push(NodeResponse::MoveNode {
-                node: self.node_id,
-                drag_delta,
-            });
-            responses.push(NodeResponse::RaiseNode(self.node_id));
-        }
-
-        // Node selection
-        //
-        // HACK: Only set the select response when no other response is active.
-        // This prevents some issues.
-        if responses.is_empty() && window_response.clicked_by(PointerButton::Primary) {
-            responses.push(NodeResponse::SelectNode(self.node_id));
-            responses.push(NodeResponse::RaiseNode(self.node_id));
-        }
 
         responses
     }
