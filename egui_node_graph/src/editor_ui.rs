@@ -5,6 +5,7 @@ use crate::utils::ColorUtils;
 
 use super::*;
 use egui::epaint::{CubicBezierShape, RectShape};
+use egui::style::Margin;
 use egui::*;
 
 pub type PortLocations = std::collections::HashMap<AnyParameterId, Pos2>;
@@ -509,7 +510,12 @@ where
         ui: &mut Ui,
         user_state: &mut UserState,
     ) -> Vec<NodeResponse<UserResponse, NodeData>> {
-        let margin = egui::vec2(15.0, 5.0);
+        let margin = Margin {
+            left: 15.0,
+            right: 15.0,
+            top: 5.0,
+            bottom: 15.0,
+        };
         let mut responses = Vec::<NodeResponse<UserResponse, NodeData>>::new();
 
         let background_color;
@@ -543,7 +549,7 @@ where
                     ));
                     ui.add_space(8.0); // The size of the little cross icon
                 });
-                ui.add_space(margin.y);
+                ui.add_space(margin.top);
                 title_height = ui.min_size().y;
 
                 // First pass: Draw the inner fields. Compute port heights
@@ -737,14 +743,18 @@ where
 
         let (shape, outline) = {
             let rounding_radius = 4.0;
-            let rounding = Rounding::same(rounding_radius);
 
-            let titlebar_height = title_height + margin.y;
+            let titlebar_height = title_height + margin.top;
             let titlebar_rect =
                 Rect::from_min_size(outer_rect.min, vec2(outer_rect.width(), titlebar_height));
             let titlebar = Shape::Rect(RectShape {
                 rect: titlebar_rect,
-                rounding,
+                rounding: Rounding {
+                    nw: rounding_radius,
+                    ne: rounding_radius,
+                    sw: 0.0,
+                    se: 0.0,
+                },
                 fill: self.graph[self.node_id]
                     .user_data
                     .titlebar_color(ui, self.node_id, self.graph, user_state)
@@ -753,32 +763,26 @@ where
             });
 
             let body_rect = Rect::from_min_size(
-                outer_rect.min + vec2(0.0, titlebar_height - rounding_radius),
+                outer_rect.min + vec2(0.0, titlebar_height),
                 vec2(outer_rect.width(), outer_rect.height() - titlebar_height),
             );
             let body = Shape::Rect(RectShape {
                 rect: body_rect,
-                rounding: Rounding::none(),
+                rounding: Rounding {
+                    nw: 0.0,
+                    ne: 0.0,
+                    sw: rounding_radius,
+                    se: rounding_radius,
+                },
                 fill: background_color,
                 stroke: Stroke::NONE,
             });
 
-            let bottom_body_rect = Rect::from_min_size(
-                body_rect.min + vec2(0.0, body_rect.height() - titlebar_height * 0.5),
-                vec2(outer_rect.width(), titlebar_height),
-            );
-            let bottom_body = Shape::Rect(RectShape {
-                rect: bottom_body_rect,
-                rounding,
-                fill: background_color,
-                stroke: Stroke::NONE,
-            });
-
-            let node_rect = titlebar_rect.union(body_rect).union(bottom_body_rect);
+            let node_rect = titlebar_rect.union(body_rect);
             let outline = if self.selected {
                 Shape::Rect(RectShape {
                     rect: node_rect.expand(1.0),
-                    rounding,
+                    rounding: Rounding::same(rounding_radius),
                     fill: Color32::WHITE.lighten(0.8),
                     stroke: Stroke::NONE,
                 })
@@ -789,7 +793,7 @@ where
             // Take note of the node rect, so the editor can use it later to compute intersections.
             self.node_rects.insert(self.node_id, node_rect);
 
-            (Shape::Vec(vec![titlebar, body, bottom_body]), outline)
+            (Shape::Vec(vec![titlebar, body]), outline)
         };
 
         ui.painter().set(background_shape, shape);
