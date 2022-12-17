@@ -549,8 +549,8 @@ where
                     ));
                     ui.add_space(8.0); // The size of the little cross icon
                 });
-                ui.add_space(margin.top);
                 title_height = ui.min_size().y;
+                ui.add_space(margin.top);
 
                 // First pass: Draw the inner fields. Compute port heights
                 let inputs = self.graph[self.node_id].inputs.clone();
@@ -744,7 +744,7 @@ where
         let (shape, outline) = {
             let rounding_radius = 4.0;
 
-            let titlebar_height = title_height + margin.top;
+            let titlebar_height = title_height + margin.top * 2.0;
             let titlebar_rect =
                 Rect::from_min_size(outer_rect.min, vec2(outer_rect.width(), titlebar_height));
             let titlebar = Shape::Rect(RectShape {
