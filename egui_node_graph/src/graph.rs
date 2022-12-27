@@ -42,6 +42,7 @@ impl<Node: NodeTrait> Graph<Node> {
             nodes: SlotMap::default(),
             connections: Default::default(),
             dropped_connections: Default::default(),
+            drop_buffer: Vec::new(),
         }
     }
 
@@ -182,14 +183,14 @@ impl<Node: NodeTrait> Graph<Node> {
         return result;
     }
 
-    pub fn drop_connection(&mut self, id: ConnectionId) -> Result<ConnectionId, GraphConnectionDropError> {
+    pub fn drop_connection(&mut self, id: ConnectionId) -> Result<ConnectionId, GraphDropConnectionError> {
         self.node_mut_or(
             id.node(),
             |node| {
                 node.drop_connection(id.into())
-                .map_err(|err| GraphConnectionDropError::NodeError{node: id.node(), err})
+                .map_err(|err| GraphDropConnectionError::NodeError{node: id.node(), err})
             },
-            || Err(GraphConnectionDropError::BadNode(id.node()))
+            || Err(GraphDropConnectionError::BadNode(id.node()))
         )
     }
 
@@ -291,7 +292,7 @@ pub enum GraphDropConnectionError {
     #[error("node [{0}] does not exist in the graph")]
     BadNodeId(NodeId),
     #[error("node [{node}] experienced an error:\n{err}")]
-    NodeError{node: NodeId, err: NodeConnectionDropError},
+    NodeError{node: NodeId, err: NodeDropConnectionError},
 }
 
 impl<Node> Default for Graph<Node> {

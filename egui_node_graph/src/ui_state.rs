@@ -11,8 +11,13 @@ pub struct PanZoom {
 }
 
 #[cfg_attr(feature = "persistence", derive(Serialize, Deserialize))]
-pub struct GraphEditorState<Node, Context: GraphContext> {
-    pub graph: Graph<Node>,
+pub struct GraphEditorState<Context>
+where
+    Context: GraphContext,
+    Context::Node: NodeTrait,
+    Context::NodeTemplate: NodeTemplateTrait<Context::Node>,
+{
+    pub graph: Graph<Context::Node>,
     /// Nodes are drawn in this order. Draw order is important because nodes
     /// that are drawn last are on top.
     pub node_order: Vec<NodeId>,
@@ -31,7 +36,7 @@ pub struct GraphEditorState<Node, Context: GraphContext> {
     pub context: Context,
 }
 
-impl<Node, Context: GraphContext> GraphEditorState<Node, Context> {
+impl<Context: GraphContext> GraphEditorState<Context> {
     pub fn new(default_zoom: f32, context: Context) -> Self {
         Self {
             graph: Graph::new(),

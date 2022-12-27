@@ -1,35 +1,29 @@
-use std::marker::PhantomData;
 
-use crate::{color_hex_utils::*, NodeTemplateIter, NodeTemplateTrait};
+use crate::{color_hex_utils::*, NodeTemplateIter, NodeTemplateTrait, NodeTrait};
 
 use egui::*;
 
 #[cfg_attr(feature = "persistence", derive(serde::Serialize, serde::Deserialize))]
-pub struct NodeFinder<NodeTemplate> {
+pub struct NodeFinder {
     pub query: String,
     /// Reset every frame. When set, the node finder will be moved at that position
     pub position: Option<Pos2>,
     pub just_spawned: bool,
-    _phantom: PhantomData<NodeTemplate>,
 }
 
-impl<NodeTemplate, NodeData> NodeFinder<NodeTemplate>
-where
-    NodeTemplate: NodeTemplateTrait<NodeData = NodeData>,
-{
+impl NodeFinder {
     pub fn new_at(pos: Pos2) -> Self {
         NodeFinder {
             query: "".into(),
             position: Some(pos),
             just_spawned: true,
-            _phantom: Default::default(),
         }
     }
 
     /// Shows the node selector panel with a search bar. Returns whether a node
     /// archetype was selected and, in that case, the finder should be hidden on
     /// the next frame.
-    pub fn show(
+    pub fn show<Node: NodeTrait, NodeTemplate: NodeTemplateTrait<Node>>(
         &mut self,
         ui: &mut Ui,
         all_kinds: impl NodeTemplateIter<Item = NodeTemplate>,

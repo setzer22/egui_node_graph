@@ -8,7 +8,7 @@ use epaint::RectShape;
 /// user wants to store per-node.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "persistence", derive(Serialize, Deserialize))]
-pub struct ColumnNode<Content, InputPort, OutputPort> {
+pub struct ColumnNode<Content, DataType, InputPort, OutputPort> {
     pub position: Pos2,
     pub label: String,
     pub content: Content,
@@ -23,19 +23,21 @@ pub struct ColumnNode<Content, InputPort, OutputPort> {
     /// node's frame changes then the node size should be fixed after one bad
     /// rendering cycle.
     pub size_hint: f32,
+
+    _ignore: std::marker::PhantomData<DataType>,
 }
 
 pub type SimpleColumnNode<Content, DataType> =
-    ColumnNode<Content, VerticalInputPort<DataType>, VerticalPort<DataType>>;
+    ColumnNode<Content, DataType, VerticalInputPort<DataType>, VerticalPort<DataType>>;
 
-impl<Content, InputPort, OutputPort> NodeTrait for ColumnNode<Content, InputPort, OutputPort>
+impl<Content, DataType, InputPort, OutputPort> NodeTrait for ColumnNode<Content, DataType, InputPort, OutputPort>
 where
     Content: NodeContentTrait,
-    Content::DataType: DataTypeTrait,
-    Content::DataType::Value: WidgetValueTrait,
+    DataType: DataTypeTrait,
     InputPort: PortTrait,
     OutputPort: PortTrait,
 {
+    type DataType = DataType;
     type Content = Content;
 
     fn show<Node>(
@@ -44,11 +46,11 @@ where
         id: NodeId,
         state: NodeUiState<DataTypeOf<Node>>,
         graph: &Graph<Node>,
-        context: &dyn GraphContext,
+        context: &dyn GraphContext<Node = Node>,
     ) -> Vec<NodeResponse<Self>>
     where
         Node: NodeTrait,
-        Node::Content: NodeContentTrait<DataType=DataTypeOf<Self>>,
+        Node::Content: NodeContentTrait,
     {
         let mut ui = parent_ui.child_ui_with_id_source(
             Rect::from_min_size(self.position + state.pan, [self.size_hint, 0.0].into()),
@@ -59,8 +61,8 @@ where
         let margin = egui::vec2(15.0, 5.0);
         let mut responses = Vec::<NodeResponse<Self>>::new();
 
-        let background_color = context.recommend_node_background_color(ui, state.node_id);
-        let text_color = context.recommend_node_text_color(ui, state.node_id);
+        let background_color = context.recommend_node_background_color(&ui, state.node_id);
+        let text_color = context.recommend_node_text_color(&ui, state.node_id);
 
         ui.visuals_mut().widgets.noninteractive.fg_stroke = Stroke::new(2.0, text_color);
 
@@ -119,7 +121,7 @@ where
             responses.extend(self.content.content_ui(ui, id, graph).into_iter());
         });
 
-        let (shape, outline) = {
+        let (shape, outline, outer_rect) = {
             let rounding_radius = 4.0;
             let rounding = Rounding::same(rounding_radius);
 
@@ -132,9 +134,9 @@ where
                 rect: titlebar_rect,
                 rounding,
                 fill: self.content.titlebar_color(
-                    ui, id, graph
+                    &ui, id, graph
                 ).unwrap_or_else(|| context.recommend_node_background_color(
-                    ui, id).lighten(0.8)
+                    &ui, id).lighten(0.8)
                 ),
                 stroke: Stroke::none(),
             });
@@ -175,11 +177,65 @@ where
                 Shape::Noop
             };
 
-            (Shape::Vec(vec![titlebar, body, bottom_body]), outline)
+            (Shape::Vec(vec![titlebar, body, bottom_body]), outline, outer_rect)
         };
 
         ui.painter().set(background_shape, shape);
         ui.painter().set(outline_shape, outline);
 
+        // Make close button
+        if {
+            let margin = 8.0;
+            let size = 10.0;
+            let x_size = 8.0;
+            let stroke_width = 2.0;
+            let offset = margin + size / 2.0;
+
+            let position = pos2(outer_rect.right() - offset, outer_rect.top() + offset);
+            let rect = Rect::from_center_size(position, vec2(size, size));
+            let x_rect = Rect::from_center_size(position, vec2(x_size, x_size));
+            let resp = ui.allocate_rect(rect, Sense::click());
+
+            let (stroke, fill) = if resp.dragged() {
+                context.recommend_close_button_clicked_colors(&ui, state.node_id)
+            } else if resp.hovered() {
+                context.recommend_close_button_hover_colors(&ui, state.node_id)
+            } else {
+                context.recommend_close_button_passive_colors(&ui, state.node_id)
+            };
+
+            ui.painter().rect(rect, 0.5, fill, fill);
+
+            let stroke = Stroke {
+                width: stroke_width,
+                color: stroke,
+            };
+            ui.painter().line_segment([x_rect.left_top(), x_rect.right_bottom()], stroke);
+            ui.painter().line_segment([x_rect.right_top(), x_rect.left_bottom()], stroke);
+
+            resp
+        }.clicked() {
+            responses.push(NodeResponse::DeleteNodeUi(state.node_id));
+        }
+
+        let window_response = ui.interact(
+            outer_rect,
+            Id::new((state.node_id, "window")),
+            Sense::click_and_drag(),
+        );
+
+        // Movement
+        *self.position += window_response.drag_delta();
+        if window_response.drag_delta() > 0.0 {
+            responses.push(NodeResponse::RaiseNode(state.node_id));
+        }
+
+        // Node selection
+        if responses.is_empty() && window_response.clicked_by(PointerButton::Primary) {
+            responses.push(NodeResponse::SelectNode(state.node_id));
+            responses.push(NodeResponse::RaiseNode(state.node_id));
+        }
+
+        responses
     }
 }

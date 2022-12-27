@@ -69,7 +69,7 @@ pub trait PortTrait {
         ui: &mut egui::Ui,
         id: (NodeId, PortId),
         state: &NodeUiState<DataTypeOf<Node>>,
-        context: &dyn GraphContext,
+        context: &dyn GraphContext<Node=Node>,
     ) -> (egui::Rect, Vec<PortResponse<Node>>);
     // TODO(@mxgrey): All of these Vec return types should be changed to
     // impl IntoIterator<PortResponse> when type_alias_impl_trait is a
@@ -114,7 +114,7 @@ pub trait NodeTrait {
         id: NodeId,
         state: NodeUiState<DataTypeOf<Node>>,
         graph: &Graph<Node>,
-        context: &dyn GraphContext,
+        context: &dyn GraphContext<Node=Node>,
     ) -> Vec<NodeResponse<Self>>;
 
     /// Drops the connection at the specified port and hook. Returns [`Ok`] with
@@ -123,7 +123,7 @@ pub trait NodeTrait {
     fn drop_connection(
         &mut self,
         id: (PortId, HookId)
-    ) -> Result<ConnectionId, NodeConnectionDropError>;
+    ) -> Result<ConnectionId, NodeDropConnectionError>;
 
     /// Remove all connections that this Node is holding and report the ID
     /// information for them.
@@ -154,30 +154,15 @@ pub trait NodeTemplateIter {
 /// the [`GraphEditorState`]. It allows the customization of node templates. A
 /// node template is what describes what kinds of nodes can be added to the
 /// graph, what is their name, and what are their input / output parameters.
-pub trait NodeTemplateTrait: Clone {
-    /// Must be set to the custom user `NodeData` type
-    type Node;
-    /// Must be set to the custom user `UserState` type
-    type UserState;
-
+pub trait NodeTemplateTrait<Node>: Clone {
     /// Returns a descriptive name for the node kind, used in the node finder.
     fn node_finder_label(&self) -> &str;
 
     /// Returns a descriptive name for the node kind, used in the graph.
     fn node_graph_label(&self) -> String;
 
-    /// Returns the user data for this node kind.
-    fn user_data(&self) -> Self::NodeData;
-
-    /// This function is run when this node kind gets added to the graph. The
-    /// node will be empty by default, and this function can be used to fill its
-    /// parameters.
-    fn build_node(
-        &self,
-        graph: &mut Graph<Self::Node>,
-        user_state: &Self::UserState,
-        node_id: NodeId,
-    );
+    /// This function is run when this node kind gets added to the graph.
+    fn build_node(&self) -> Node;
 }
 
 /// The custom user response types when drawing nodes in the graph must
@@ -185,11 +170,10 @@ pub trait NodeTemplateTrait: Clone {
 pub trait ContentResponseTrait: Clone + std::fmt::Debug {}
 
 pub trait GraphContext {
-    type DataType;
-    type NodeTemplate;
+    type Node;
 
     /// Recommend what color should be used for connections transmitting this data type
-    fn recommend_data_type_color(&self, typ: &Self::DataType) -> egui::Color32;
+    fn recommend_data_type_color(&self, typ: &DataTypeOf<Self::Node>) -> egui::Color32;
 
     /// Recommend what color should be used for the background of a node
     fn recommend_node_background_color(
@@ -264,6 +248,45 @@ pub trait GraphContext {
             color_from_hex("#F9F3EE")
         } else {
             color_from_hex("#C4DDFF")
+        }
+    }
+
+    /// (stroke, background) colors for the close button of a node when it is passive
+    fn recommend_close_button_passive_colors(
+        &self,
+        ui: &egui::Ui,
+        _node_id: NodeId,
+    ) -> (egui::Color32, egui::Color32) {
+        if ui.visuals().dark_mode {
+            color_from_hex("#aaaaaa").unwrap()
+        } else {
+            color_from_hex("#555555").unwrap()
+        }
+    }
+
+    /// (stroke, background) colors for the close button of a node when it is being hovered
+    fn recommend_close_button_hover_colors(
+        &self,
+        ui: &egui::Ui,
+        _node_id: NodeId,
+    ) -> (egui::Color32, egui::Color32) {
+        if ui.visuals().dark_mode {
+            color_from_hex("#dddddd").unwrap()
+        } else {
+            color_from_hex("#222222").unwrap()
+        }
+    }
+
+    /// (stroke, background) colors for the close button of a node when it is being clicked
+    fn recommend_close_button_clicked_colors(
+        &self,
+        ui: &egui::Ui,
+        _node_id: NodeId,
+    ) -> (egui::Color32, egui::Color32) {
+        if ui.visuals().dark_mode {
+            color_from_hex("#ffffff").unwrap()
+        } else {
+            color_from_hex("#000000").unwrap()
         }
     }
 }

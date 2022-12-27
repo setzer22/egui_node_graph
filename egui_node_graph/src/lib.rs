@@ -6,7 +6,7 @@ pub type SVec<T> = smallvec::SmallVec<[T; 4]>;
 
 /// Contains the main definitions for the node graph model.
 pub mod graph;
-pub use graph::{Graph, GraphConnectionDropError, NodeConnectionDropError};
+pub use graph::{Graph, GraphDropConnectionError, NodeDropConnectionError};
 
 /// Type declarations for the different id types (node, input, output)
 pub mod id_type;
@@ -15,10 +15,6 @@ pub use id_type::*;
 /// Implements the index trait for the Graph type, allowing indexing by all
 /// three id types
 pub mod index_impls;
-
-/// Custom error types, crate-wide
-pub mod error;
-pub use error::*;
 
 /// The main struct in the library, contains all the necessary state to draw the
 /// UI graph

@@ -58,7 +58,7 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
         ui: &mut egui::Ui,
         id: (NodeId, PortId),
         state: &NodeUiState<DataTypeOf<Node>>,
-        context: &dyn GraphContext,
+        context: &dyn GraphContext<Node=Node>,
         show_value: Option<&DataType::Value>,
     ) -> (egui::Rect, Vec<PortResponse<Node>>)
     where
@@ -404,7 +404,7 @@ impl<DataType: DataTypeTrait> PortTrait for VerticalPort<DataType> {
         ui: &mut egui::Ui,
         id: (NodeId, PortId),
         state: &NodeUiState<DataTypeOf<Node>>,
-        context: &dyn GraphContext,
+        context: &dyn GraphContext<Node=Node>,
     ) -> (egui::Rect, Vec<PortResponse<Node>>)
     where
         DataType: Into<DataTypeOf<Node>>,
@@ -420,7 +420,7 @@ impl<DataType: DataTypeTrait> PortTrait for VerticalInputPort<DataType> {
         ui: &mut egui::Ui,
         id: (NodeId, PortId),
         state: &NodeUiState<DataTypeOf<Node>>,
-        context: &dyn GraphContext,
+        context: &dyn GraphContext<Node=Node>,
     ) -> (egui::Rect, Vec<PortResponse<Node>>)
     where
         DataType: Into<DataTypeOf<Node>>,
