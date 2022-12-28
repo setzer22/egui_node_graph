@@ -11,12 +11,7 @@ pub struct PanZoom {
 }
 
 #[cfg_attr(feature = "persistence", derive(Serialize, Deserialize))]
-pub struct GraphEditorState<Context>
-where
-    Context: GraphContext,
-    Context::Node: NodeTrait,
-    Context::NodeTemplate: NodeTemplateTrait<Context::Node>,
-{
+pub struct GraphEditorState<Context: GraphContextTrait> {
     pub graph: Graph<Context::Node>,
     /// Nodes are drawn in this order. Draw order is important because nodes
     /// that are drawn last are on top.
@@ -30,13 +25,13 @@ where
     /// The position of each node.
     pub node_positions: SecondaryMap<NodeId, egui::Pos2>,
     /// The node finder is used to create new nodes.
-    pub node_finder: Option<NodeFinder<Context::NodeTemplate>>,
+    pub node_finder: Option<NodeFinder>,
     /// The panning of the graph viewport.
     pub pan_zoom: PanZoom,
     pub context: Context,
 }
 
-impl<Context: GraphContext> GraphEditorState<Context> {
+impl<Context: GraphContextTrait> GraphEditorState<Context> {
     pub fn new(default_zoom: f32, context: Context) -> Self {
         Self {
             graph: Graph::new(),

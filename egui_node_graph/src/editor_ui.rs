@@ -12,7 +12,7 @@ pub type HookLocations = HashMap<ConnectionId, Pos2>;
 /// Ports communicate connection and disconnection events to the parent graph
 /// when drawn.
 #[derive(Clone, Debug)]
-pub enum PortResponse<Node: NodeTrait> {
+pub enum PortResponse<DataType: DataTypeTrait> {
     /// The user is creating a new connection from the hook of ConnectionId
     ConnectEventStarted(ConnectionId),
     /// The user is moving the connection that used to be attached to ConnectionId
@@ -23,20 +23,18 @@ pub enum PortResponse<Node: NodeTrait> {
         input: InputId,
     },
     /// The value of a port has changed
-    Value(ValueResponseOf<Node>)
+    Value(<DataType::Value as ValueTrait>::Response)
 }
 
-impl<Node: NodeTrait> PortResponse<Node> {
+impl<DataType: DataTypeTrait> PortResponse<DataType> {
     pub fn connect_event_ended(a: ConnectionId, b: ConnectionId) -> Option<Self> {
-        if let Some(ConnectionId::Input(a), ConnectionId::Output(b)) = (a, b) {
-            Some(PortResponse::ConnectEventEnded{output: b, input: a})
+        if let (Some(input), Some(output)) = (a.as_input(), b.as_output()) {
+            Some(PortResponse::ConnectEventEnded{output, input})
+        } else if let (Some(output), Some(input)) = (a.as_output(), b.as_input()) {
+            Some(PortResponse::ConnectEventEnded{output, input})
+        } else {
+            None
         }
-
-        if let Some(ConnectionId::Output(a), ConnectionId::Input(b)) = (a, b) {
-            Some(PortResponse::ConnectEventEnded{output: a, input: b})
-        }
-
-        None
     }
 }
 
@@ -45,7 +43,7 @@ impl<Node: NodeTrait> PortResponse<Node> {
 /// when executing some custom actions in the UI of the node.
 #[derive(Clone, Debug)]
 pub enum NodeResponse<Node: NodeTrait> {
-    Port(PortResponse<Node>),
+    Port(PortResponse<Node::DataType>),
     CreatedNode(NodeId),
     SelectNode(NodeId),
     /// As a user of this library, prefer listening for `DeleteNodeFull` which
@@ -64,8 +62,8 @@ pub enum NodeResponse<Node: NodeTrait> {
 }
 
 /// Automatically convert a Port Response into a NodeResponse
-impl<N: NodeTrait> From<PortResponse<N>> for NodeResponse<N> {
-    fn from(value: PortResponse<N>) -> Self {
+impl<N: NodeTrait> From<PortResponse<N::DataType>> for NodeResponse<N> {
+    fn from(value: PortResponse<N::DataType>) -> Self {
         Self::Port(value)
     }
 }
@@ -75,7 +73,7 @@ pub struct NodeUiState<'a, DataType> {
     pub hook_locations: &'a mut HookLocations,
     pub node_id: NodeId,
     pub ongoing_drag: Option<(ConnectionId, &'a DataType)>,
-    pub selected: bool,
+    pub selected_nodes: Vec<NodeId>,
 }
 
 /// The return value of [`draw_graph_editor`]. This value can be used to make
@@ -85,12 +83,7 @@ pub struct GraphResponse<Node: NodeTrait> {
     pub node_responses: Vec<NodeResponse<Node>>,
 }
 
-impl<Context> GraphEditorState<Context>
-where
-    Context: GraphContext,
-    Context::Node: NodeTrait,
-    Context::NodeTemplate: NodeTemplateTrait<Context::Node>,
-{
+impl<Context: GraphContextTrait> GraphEditorState<Context> {
     #[must_use]
     pub fn draw_graph_editor(
         &mut self,

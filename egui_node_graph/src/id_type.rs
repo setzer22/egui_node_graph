@@ -16,16 +16,30 @@ pub struct OutputId(pub NodeId, pub OutputPortId, pub HookId);
 pub struct ConnectionId(pub NodeId, pub PortId, pub HookId);
 
 impl ConnectionId {
+    pub fn as_input(&self) -> Option<InputId> {
+        match self.1 {
+            PortId::Input(port) => Some(InputId(self.0, port, self.2)),
+            _ => None,
+        }
+    }
+
+    pub fn as_output(&self) -> Option<OutputId> {
+        match self.1 {
+            PortId::Output(port) => Some(OutputId(self.0, port, self.2)),
+            _ => None,
+        }
+    }
+
     pub fn assume_input(&self) -> InputId {
-        match self {
-            ConnectionId::Input(input) => *input,
-            ConnectionId::Output(output) => panic!("{:?} is not an InputId", output),
+        match self.as_input() {
+            Some(input) => input,
+            None => panic!("{:?} is not an InputId", self),
         }
     }
     pub fn assume_output(&self) -> OutputId {
-        match self {
-            ConnectionId::Output(output) => *output,
-            ConnectionId::Input(input) => panic!("{:?} is not an OutputId", input),
+        match self.as_output() {
+            Some(output) => output,
+            None => panic!("{:?} is not an OutputId", self),
         }
     }
 

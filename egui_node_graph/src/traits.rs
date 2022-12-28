@@ -5,7 +5,7 @@ use crate::color_hex_utils::color_from_hex;
 /// [`Graph`]. The trait allows drawing custom inline widgets for the different
 /// types of the node graph.
 pub trait ValueTrait {
-    type Response;
+    type Response: ResponseTrait;
     /// This method will be called for each input parameter with a widget.
     ///
     /// The return value is a tuple with the recommended size of the widget and
@@ -20,10 +20,10 @@ pub trait ValueTrait {
 /// This trait must be implemented by the `DataType` associated type of any
 /// [`NodeTrait`]. This trait tells the library how to visually expose data types
 /// to the user.
-pub trait DataTypeTrait {
+pub trait DataTypeTrait: Clone {
 
     /// This associated type gives the type of a raw value
-    type Value;
+    type Value: ValueTrait;
 
     fn is_compatible(&self, other: &Self) -> bool;
 
@@ -61,69 +61,83 @@ pub trait DataTypeTrait {
 /// Trait to be implemented by port types. Ports belong to nodes and define the
 /// behavior for connecting inputs and outputs for its node.
 pub trait PortTrait {
+    type DataType: DataTypeTrait;
 
     /// Return the ideal Rect that the port would like to use so that the parent
     /// Node widget can adjust its size if needed.
-    fn show<Node>(
+    fn show(
         &mut self,
         ui: &mut egui::Ui,
         id: (NodeId, PortId),
-        state: &NodeUiState<DataTypeOf<Node>>,
-        context: &dyn GraphContext<Node=Node>,
-    ) -> (egui::Rect, Vec<PortResponse<Node>>);
+        state: &NodeUiState<Self::DataType>,
+        style: &dyn GraphStyleTrait<DataType=Self::DataType>,
+    ) -> (egui::Rect, Vec<PortResponse<Self::DataType>>);
     // TODO(@mxgrey): All of these Vec return types should be changed to
     // impl IntoIterator<PortResponse> when type_alias_impl_trait is a
     // stable feature. That way we can avoid memory allocations in the return
     // value.
+
+    /// Drops the connection at the specified hook. Returns [`Ok`] if the drop
+    /// was successful or [`Err`] if the hook does not exist or did not have a
+    /// connection.
+    fn drop_connection(&mut self, id: HookId) -> Result<(), PortDropConnectionError>;
+
+    /// Remove all connections that this Port is holding and report the ID
+    /// information for them.
+    fn drop_all_connections(&mut self) -> Vec<HookId>;
+
+    /// Connect a hook in this port to another hook. This method should only be
+    /// called by a [`NodeTrait`] implementation. To create a connection as a
+    /// user, call [`Graph::add_connection`].
+    fn connect(&mut self, from: HookId, to: graph::ConnectionToken) -> Result<(), PortAddConnectionError>;
 }
 
 /// This trait must be implemented for the `Content` associated type of the
 /// [`NodeTrait`]. This trait allows customizing some aspects of the node drawing.
 pub trait NodeContentTrait: Sized {
-    type Response;
+    type AppState;
+    type Response: ResponseTrait;
 
     /// Additional UI elements to draw in the nodes, after the parameters.
-    fn content_ui<Node>(
+    fn content_ui(
         &mut self,
         ui: &mut egui::Ui,
+        app: &Self::AppState,
         node_id: NodeId,
-        graph: &Graph<Node>,
-    ) -> Vec<NodeResponse<Node>>
-    where
-        Self::Response: ContentResponseTrait;
+    ) -> Vec<Self::Response>;
 
     /// Set background color on titlebar
     /// If the return value is None, the default color is set.
-    fn titlebar_color<Node>(
+    fn titlebar_color(
         &self,
         _ui: &egui::Ui,
+        _app: &Self::AppState,
         _node_id: NodeId,
-        _graph: &Graph<Node>,
     ) -> Option<egui::Color32> {
         None
     }
 }
 
 pub trait NodeTrait {
-    type DataType;
+    type DataType: DataTypeTrait;
     type Content: NodeContentTrait;
 
-    fn show<Node>(
+    fn show(
         &mut self,
         ui: &mut egui::Ui,
+        app: &<Self::Content as NodeContentTrait>::AppState,
         id: NodeId,
-        state: NodeUiState<DataTypeOf<Node>>,
-        graph: &Graph<Node>,
-        context: &dyn GraphContext<Node=Node>,
-    ) -> Vec<NodeResponse<Self>>;
+        state: NodeUiState<Self::DataType>,
+        style: &dyn GraphStyleTrait<DataType=Self::DataType>,
+    ) -> Vec<NodeResponse<Self>> where Self: Sized;
 
-    /// Drops the connection at the specified port and hook. Returns [`Ok`] with
-    /// the connected ID if the drop was successful or [`Err`] if the hook does
-    /// not exist or did not have a connection.
+    /// Drops the connection at the specified port and hook. Returns [`Ok`] if
+    /// the drop was successful or [`Err`] if the hook does not exist or did not
+    /// have a connection.
     fn drop_connection(
         &mut self,
         id: (PortId, HookId)
-    ) -> Result<ConnectionId, NodeDropConnectionError>;
+    ) -> Result<(), NodeDropConnectionError>;
 
     /// Remove all connections that this Node is holding and report the ID
     /// information for them.
@@ -132,10 +146,7 @@ pub trait NodeTrait {
     /// Connect a hook in this node to another hook. This method can only be
     /// called by the [`Graph`] class because only the graph module can produce
     /// a ConnectionToken. To create a connection as a user, call [`Graph::add_connection`].
-    fn connect(&mut self, from: (PortId, HookId), to: graph::ConnectionToken) -> Result<(), ()>;
-
-    /// Get the user-defined content of this Node.
-    fn content(&self) -> &Self::Content;
+    fn connect(&mut self, from: (PortId, HookId), to: graph::ConnectionToken) -> Result<(), NodeAddConnectionError>;
 }
 
 pub type ContentResponseOf<Node> = <<Node as NodeTrait>::Content as NodeContentTrait>::Response;
@@ -154,7 +165,10 @@ pub trait NodeTemplateIter {
 /// the [`GraphEditorState`]. It allows the customization of node templates. A
 /// node template is what describes what kinds of nodes can be added to the
 /// graph, what is their name, and what are their input / output parameters.
-pub trait NodeTemplateTrait<Node>: Clone {
+pub trait NodeTemplateTrait: Clone {
+    /// What kind of node can be produced by this template
+    type Node;
+
     /// Returns a descriptive name for the node kind, used in the node finder.
     fn node_finder_label(&self) -> &str;
 
@@ -162,18 +176,19 @@ pub trait NodeTemplateTrait<Node>: Clone {
     fn node_graph_label(&self) -> String;
 
     /// This function is run when this node kind gets added to the graph.
-    fn build_node(&self) -> Node;
+    fn build_node(&self) -> Self::Node;
 }
 
 /// The custom user response types when drawing nodes in the graph must
 /// implement this trait.
-pub trait ContentResponseTrait: Clone + std::fmt::Debug {}
+pub trait ResponseTrait: Clone + std::fmt::Debug {}
+impl<T: Clone + std::fmt::Debug> ResponseTrait for T {}
 
-pub trait GraphContext {
-    type Node;
+pub trait GraphStyleTrait {
+    type DataType: DataTypeTrait;
 
     /// Recommend what color should be used for connections transmitting this data type
-    fn recommend_data_type_color(&self, typ: &DataTypeOf<Self::Node>) -> egui::Color32;
+    fn recommend_data_type_color(&self, typ: &Self::DataType) -> egui::Color32;
 
     /// Recommend what color should be used for the background of a node
     fn recommend_node_background_color(
@@ -218,7 +233,7 @@ pub trait GraphContext {
         _ui: &egui::Ui,
         _port: (NodeId, PortId),
     ) -> egui::Color32 {
-        color_from_hex("#FFDEDE")
+        color_from_hex("#FFDEDE").unwrap()
     }
 
     /// Ports may choose to be highlighted with this color when a compatible
@@ -228,7 +243,7 @@ pub trait GraphContext {
         _ui: &egui::Ui,
         _port: (NodeId, PortId),
     ) -> egui::Color32 {
-        color_from_hex("#00FFAB")
+        color_from_hex("#00FFAB").unwrap()
     }
 
     fn recommend_port_reject_color(
@@ -236,7 +251,7 @@ pub trait GraphContext {
         _ui: &egui::Ui,
         _port: (NodeId, PortId),
     ) -> egui::Color32 {
-        color_from_hex("#EB4747")
+        color_from_hex("#EB4747").unwrap()
     }
 
     fn recommend_port_hover_color(
@@ -245,9 +260,9 @@ pub trait GraphContext {
         _port: (NodeId, PortId),
     ) -> egui::Color32 {
         if ui.visuals().dark_mode {
-            color_from_hex("#F9F3EE")
+            color_from_hex("#F9F3EE").unwrap()
         } else {
-            color_from_hex("#C4DDFF")
+            color_from_hex("#C4DDFF").unwrap()
         }
     }
 
@@ -257,10 +272,12 @@ pub trait GraphContext {
         ui: &egui::Ui,
         _node_id: NodeId,
     ) -> (egui::Color32, egui::Color32) {
+        let dark = color_from_hex("#aaaaaa").unwrap();
+        let light = color_from_hex("#555555").unwrap();
         if ui.visuals().dark_mode {
-            color_from_hex("#aaaaaa").unwrap()
+            (light, dark)
         } else {
-            color_from_hex("#555555").unwrap()
+            (dark, light)
         }
     }
 
@@ -270,10 +287,12 @@ pub trait GraphContext {
         ui: &egui::Ui,
         _node_id: NodeId,
     ) -> (egui::Color32, egui::Color32) {
+        let dark = color_from_hex("#dddddd").unwrap();
+        let light = color_from_hex("#222222").unwrap();
         if ui.visuals().dark_mode {
-            color_from_hex("#dddddd").unwrap()
+            (light, dark)
         } else {
-            color_from_hex("#222222").unwrap()
+            (dark, light)
         }
     }
 
@@ -283,10 +302,18 @@ pub trait GraphContext {
         ui: &egui::Ui,
         _node_id: NodeId,
     ) -> (egui::Color32, egui::Color32) {
+        let dark = color_from_hex("#ffffff").unwrap();
+        let light = color_from_hex("#000000").unwrap();
         if ui.visuals().dark_mode {
-            color_from_hex("#ffffff").unwrap()
+            (light, dark)
         } else {
-            color_from_hex("#000000").unwrap()
+            (dark, light)
         }
     }
+}
+
+pub trait GraphContextTrait {
+    type Node: NodeTrait;
+    type Style: GraphStyleTrait<DataType=<Self::Node as NodeTrait>::DataType>;
+    type NodeTemplate: NodeTemplateTrait<Node=Self::Node>;
 }

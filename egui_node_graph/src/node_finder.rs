@@ -23,7 +23,7 @@ impl NodeFinder {
     /// Shows the node selector panel with a search bar. Returns whether a node
     /// archetype was selected and, in that case, the finder should be hidden on
     /// the next frame.
-    pub fn show<Node: NodeTrait, NodeTemplate: NodeTemplateTrait<Node>>(
+    pub fn show<NodeTemplate: NodeTemplateTrait>(
         &mut self,
         ui: &mut Ui,
         all_kinds: impl NodeTemplateIter<Item = NodeTemplate>,

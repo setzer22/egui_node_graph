@@ -6,7 +6,7 @@ pub type SVec<T> = smallvec::SmallVec<[T; 4]>;
 
 /// Contains the main definitions for the node graph model.
 pub mod graph;
-pub use graph::{Graph, GraphDropConnectionError, NodeDropConnectionError};
+pub use graph::*;
 
 /// Type declarations for the different id types (node, input, output)
 pub mod id_type;

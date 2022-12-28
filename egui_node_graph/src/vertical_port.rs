@@ -16,6 +16,7 @@ pub enum InputKind {
     ConnectionOrConstant,
 }
 
+#[derive(Debug, Clone, Copy)]
 pub enum Side {
     Left,
     Right,
@@ -53,22 +54,18 @@ pub struct VerticalInputPort<DataType: DataTypeTrait> {
 }
 
 impl<DataType: DataTypeTrait> VerticalPort<DataType> {
-    pub fn show_impl<Node>(
+    pub fn show_impl(
         &mut self,
         ui: &mut egui::Ui,
         id: (NodeId, PortId),
-        state: &NodeUiState<DataTypeOf<Node>>,
-        context: &dyn GraphContext<Node=Node>,
+        state: &NodeUiState<DataType>,
+        context: &dyn GraphStyleTrait<DataType=DataType>,
         show_value: Option<&DataType::Value>,
-    ) -> (egui::Rect, Vec<PortResponse<Node>>)
-    where
-        DataType: Into<DataTypeOf<Node>>,
-        DataType::Value: ValueTrait,
-    {
+    ) -> (egui::Rect, Vec<PortResponse<DataType>>) {
         let value_rect_opt = None;
-        let mut value_resp = Vec::<DataType::Value::Response>::default();
+        let mut value_resp = Vec::<<DataType::Value as ValueTrait>::Response>::default();
         let label_rect = ui.horizontal(|ui| {
-            ui.add_space(15);
+            ui.add_space(15.0);
             ui.label(self.name);
             if let Some(value) = show_value {
                 if self.hooks.len() == 0 || (self.hooks.len() == 1 && self.available_hook.is_some()) {
@@ -97,9 +94,9 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
         let edge_width = 1_f32;
         let hook_spacing = 1_f32;
         let radius = 5_f32;
-        let single_hook = self.connection_limit.is_some_with(|v| *v == 1);
+        let single_hook = self.connection_limit.filter(|v| *v == 1).is_some();
         let hook_count = self.hooks.len();
-        let height_for_hooks: f32 = 2.0*edge_width + (2.0*radius + hook_spacing)*hook_count + hook_spacing;
+        let height_for_hooks: f32 = 2.0*edge_width + (2.0*radius + hook_spacing)*hook_count as f32 + hook_spacing;
         let port_rect = {
             let height = label_rect.height().max(height_for_hooks);
             if port_edge_dx > 0.0 {
@@ -119,13 +116,13 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
             if height_for_hooks >= label_rect.height() {
                 // The top hook needs to be as high in the port as possible
                 label_rect.min.y + edge_width + hook_spacing + radius
+            } else {
+                // The hooks should be centered in the port
+                height_for_hooks/2.0 - edge_width - hook_spacing
             }
-
-            // The hooks should be centered in the port
-            height_for_hooks/2.0 - edge_width - hook_spacing
         };
 
-        let (port_color, default_hook_color, hook_color_map, port_response) = {
+        let (port_color, default_hook_color, hook_color_map, port_response): (_, _, HashMap<HookId, egui::Color32>, _) = 'port: {
             // TODO(@mxgrey): It would be nice to move all this logic into its own
             // utility function that can be used by different types of ports.
             // That function would probably want to take in a port_rect and a
@@ -137,16 +134,15 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
                     // The port that is being dragged is this one. We should use
                     // the acceptance color while it is being dragged
                     let accept_color = context.recommend_port_accept_color(ui, id);
-                    (accept_color, accept_color, HashMap::default(), None)
+                    break 'port (accept_color, accept_color, HashMap::default(), None);
                 }
 
                 if let Some(available_hook) = self.available_hook {
                     let connection_possible = PortResponse::connect_event_ended(
-                        ConnectionId::new(id.0, id.1, available_hook),
+                        ConnectionId(id.0, id.1, available_hook),
                         dragged_connection,
                     );
                     if let Some(connection_possible) = connection_possible {
-                        let dragged_data_type: DataType = dragged_data_type.into();
                         if dragged_data_type.is_compatible(&self.data_type) {
                             if ui_port_response.hovered() || ui_port_response.drag_released() {
                                 let resp = if ui_port_response.drag_released() {
@@ -167,17 +163,17 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
                                 let accept_color = context.recommend_port_accept_color(ui, id);
 
                                 // The port can accept or has accepted the connection
-                                (accept_color, accept_color, HashMap::default(), resp)
+                                break 'port (accept_color, accept_color, HashMap::default(), resp);
                             }
 
                             // The connection is compatible but the user needs to
                             // drag it over to the port
-                            (
+                            break 'port (
                                 context.recommend_compatible_port_color(ui, id),
-                                context.recommend_data_type_color(&self.data_type),
+                                context.recommend_data_type_color(&self.data_type.clone().into()),
                                 HashMap::default(),
                                 None,
-                            )
+                            );
                         }
                     }
 
@@ -186,12 +182,12 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
                 // A connection is not possible, either because all the hooks
                 // are filled or because the data type that's being dragged
                 // is incompatible
-                (
+                break 'port (
                     context.recommend_incompatible_port_color(ui, id),
-                    context.recommend_data_type_color(&self.data_type),
+                    context.recommend_data_type_color(&self.data_type.clone().into()),
                     HashMap::default(),
                     None,
-                )
+                );
             }
 
             let hook_selected: Option<(HookId, egui::Response)> = {
@@ -209,36 +205,36 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
 
                     if resp.hovered() || resp.drag_released() || resp.drag_started() {
                         Some((hook_id, resp))
+                    } else {
+                        None
                     }
-
-                    None
                 })
             };
 
             if let Some((hook_selected, hook_resp)) = hook_selected {
-                if self.available_hook.is_some_with(|h| h == hook_selected) {
+                if self.available_hook.filter(|h| *h == hook_selected).is_some() {
                     // The user is interacting with the available hook, so we
                     // should treat it as possibly creating a connection
                     if hook_resp.hovered() {
                         // The user is hovering over the available hook. Show
                         // the user that we see the hovering.
                         let hover_color = context.recommend_port_hover_color(ui, id);
-                        (
+                        break 'port (
                             hover_color,
                             context.recommend_data_type_color(&self.data_type),
                             HashMap::from_iter([(hook_selected, hover_color)]),
                             None,
-                        )
+                        );
                     }
 
                     if hook_resp.drag_started() {
                         let accept_color = context.recommend_port_accept_color(ui, id);
-                        (
+                        break 'port (
                             accept_color,
                             context.recommend_data_type_color(&self.data_type),
                             HashMap::from_iter([(hook_selected, accept_color)]),
-                            Some(PortResponse::ConnectEventStarted(ConnectionId::new(id.0, id.1, hook_selected))),
-                        )
+                            Some(PortResponse::ConnectEventStarted(ConnectionId(id.0, id.1, hook_selected))),
+                        );
                     }
                 } else {
                     // The user is interacting with a hook that is part of a
@@ -247,24 +243,24 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
                         // Hovering over a connected hook. Show the user that we
                         // see the hovering.
                         let hover_color = context.recommend_port_hover_color(ui, id);
-                        (
+                        break 'port (
                             context.recommend_node_background_color(ui, id.0),
                             context.recommend_data_type_color(&self.data_type),
                             HashMap::from_iter([(hook_selected, hover_color)]),
                             None,
-                        )
+                        );
                     }
 
                     if hook_resp.drag_started() {
                         // Dragging from a connected hook. Begin the connection
                         // moving event.
                         let accept_color = context.recommend_port_accept_color(ui, id);
-                        (
+                        break 'port (
                             accept_color,
                             accept_color,
                             HashMap::default(),
-                            Some(PortResponse::MoveEvent(ConnectionId::new(id.0, id.1, hook_selected))),
-                        )
+                            Some(PortResponse::MoveEvent(ConnectionId(id.0, id.1, hook_selected))),
+                        );
                     }
                 }
             }
@@ -274,22 +270,22 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
                     // The user is hovering a port with an available hook.
                     // Show the user that we see the hovering.
                     let hover_color = context.recommend_port_hover_color(ui, id);
-                    (
+                    break 'port (
                         hover_color,
                         context.recommend_data_type_color(&self.data_type),
                         HashMap::from_iter([(available_hook, hover_color)]),
                         None,
-                    )
+                    );
                 } else {
                     // The user is hovering over a port that does not have an
                     // available hook.
                     let hover_color = context.recommend_incompatible_port_color(ui, id);
-                    (
+                    break 'port (
                         hover_color,
                         context.recommend_data_type_color(&self.data_type),
                         HashMap::default(),
                         None,
-                    )
+                    );
                 }
             }
 
@@ -298,12 +294,12 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
                     // The user has started to drag a new connection from the
                     // port.
                     let accept_color = context.recommend_port_accept_color(ui, id);
-                    (
+                    break 'port (
                         accept_color,
                         accept_color,
                         HashMap::default(),
-                        Some(PortResponse::ConnectEventStarted(ConnectionId::new(id.0, id.1, available_hook))),
-                    )
+                        Some(PortResponse::ConnectEventStarted(ConnectionId(id.0, id.1, available_hook))),
+                    );
                 }
             }
 
@@ -311,12 +307,12 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
                 if self.available_hook.is_none() {
                     // The user is trying to drag on a port that has no available hook
                     let reject_color = context.recommend_port_reject_color(ui, id);
-                    (
+                    break 'port (
                         reject_color,
                         context.recommend_data_type_color(&self.data_type),
                         HashMap::default(),
                         None,
-                    )
+                    );
                 }
             }
 
@@ -331,8 +327,8 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
 
         if !single_hook {
             // The port has multiple hooks so we'll draw the port rect
-            ui.painter().rect(port_rect, Default::default(), port_color, None);
             let node_color = context.recommend_node_background_color(ui, id.0);
+            ui.painter().rect(port_rect, egui::Rounding::default(), port_color, (0_f32, node_color));
             let dark_stroke = (edge_width/2.0, node_color.lighten(0.8));
             let light_stroke = (edge_width/2.0, node_color.lighten(1.2));
 
@@ -387,8 +383,8 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
         for (hook_id, _) in &self.hooks {
             let color = hook_color_map.get(&hook_id).unwrap_or(&default_hook_color);
             let p = egui::pos2(hook_x, next_hook_y);
-            ui.painter().circle(p, radius, color, None);
-            state.hook_locations.insert(ConnectionId::new(id.0, id.1, hook_id), p);
+            ui.painter().circle(p, radius, *color, (0_f32, *color));
+            state.hook_locations.insert(ConnectionId(id.0, id.1, hook_id), p);
             next_hook_y += hook_spacing + 2.0*radius;
         }
 
@@ -399,51 +395,47 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
 }
 
 impl<DataType: DataTypeTrait> PortTrait for VerticalPort<DataType> {
-    fn show<Node>(
+    type DataType = DataType;
+
+    fn show(
         &mut self,
         ui: &mut egui::Ui,
         id: (NodeId, PortId),
-        state: &NodeUiState<DataTypeOf<Node>>,
-        context: &dyn GraphContext<Node=Node>,
-    ) -> (egui::Rect, Vec<PortResponse<Node>>)
-    where
-        DataType: Into<DataTypeOf<Node>>,
-        DataType::Value: ValueTrait,
-    {
-        self.show_impl(ui, id, state, context, None)
+        state: &NodeUiState<Self::DataType>,
+        style: &dyn GraphStyleTrait<DataType=Self::DataType>,
+    ) -> (egui::Rect, Vec<PortResponse<DataType>>) {
+        self.show_impl(ui, id, state, style, None)
     }
 }
 
 impl<DataType: DataTypeTrait> PortTrait for VerticalInputPort<DataType> {
-    fn show<Node>(
+    type DataType = DataType;
+
+    fn show(
         &mut self,
         ui: &mut egui::Ui,
         id: (NodeId, PortId),
-        state: &NodeUiState<DataTypeOf<Node>>,
-        context: &dyn GraphContext<Node=Node>,
-    ) -> (egui::Rect, Vec<PortResponse<Node>>)
-    where
-        DataType: Into<DataTypeOf<Node>>,
-        DataType::Value: ValueTrait,
-    {
+        state: &NodeUiState<Self::DataType>,
+        style: &dyn GraphStyleTrait<DataType=Self::DataType>,
+    ) -> (egui::Rect, Vec<PortResponse<DataType>>) {
         match self.kind {
             InputKind::ConnectionOnly => {
-                self.port.show_impl(ui, id, state, context, None)
+                self.port.show_impl(ui, id, state, style, None)
             },
             InputKind::ConstantOnly => {
-                let label_rect = ui.label(self.port.name);
+                let label_rect = ui.label(self.port.name).rect;
                 if let Some(default_value) = &self.default_value {
                     let (value_rect, value_resp) = default_value.show(ui);
                     (
                         label_rect.union(value_rect),
-                        [value_resp].into_iter().mapP(PortResponse::Value).collect(),
+                        value_resp.into_iter().map(PortResponse::Value).collect(),
                     )
+                } else {
+                    (label_rect, Vec::new())
                 }
-
-                (label_rect, Vec::new())
             },
             InputKind::ConnectionOrConstant => {
-                self.port.show_impl(ui, id, state, context, self.default_value)
+                self.port.show_impl(ui, id, state, style, self.default_value.as_ref())
             }
         }
     }

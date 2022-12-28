@@ -71,9 +71,9 @@ impl<Node: NodeTrait> Graph<Node> {
             // we need to handle that to maintain consistency in the graph.
             self.process_dropped_connections();
             Ok(output)
+        } else {
+            Err(())
         }
-
-        Err(())
     }
 
     /// Operate on a mutable node or else perform some fallback behavior. If any
@@ -260,42 +260,58 @@ impl<Node: NodeTrait> Graph<Node> {
 }
 
 #[derive(ThisError, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PortAddConnectionError {
+    #[error("there is no hook [{0:?}] for this port")]
+    BadHook(HookId),
+    #[error("hook [{0:?}] is already occupied")]
+    HookOccupied(HookId),
+}
+
+#[derive(ThisError, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NodeAddConnectionError {
-    #[error("hook [{hook}] of port [{port}] is already occupied")]
-    HookOccupied{port: PortId, hook: HookId},
-    #[error("there is no port [{0}] for this node")]
+    #[error("there is no port [{0:?}] for this node")]
     BadPort(PortId),
-    #[error("there is no hook [{hook}] for port [{port}]")]
-    BadHook{port: PortId, hook: HookId},
+    #[error("port [{port:?}] had a connection error: {err}")]
+    PortError{port: PortId, err: PortAddConnectionError},
 }
 
 #[derive(ThisError, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GraphAddConnectionError {
+    #[error("attempting to add a connection to a NodeId that doesn't exist: {0:?}")]
     BadOutputNode(NodeId),
+    #[error("attempting to add a connection to a NodeId that doesn't exist: {0:?}")]
     BadInputNode(NodeId),
+    #[error("error from output node {node:?} while attempting to add a connection: {err:?}")]
     OutputNodeError{node: NodeId, err: NodeAddConnectionError},
+    #[error("error from input node {node:?} while attempting to add a connection: {err:?}")]
     InputNodeError{node: NodeId, err: NodeAddConnectionError},
 }
 
 #[derive(ThisError, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PortDropConnectionError {
+    #[error("there is no hook [{0:?}] for this port")]
+    BadHook(HookId),
+    #[error("hook [{0:?}] does not have any connection")]
+    NoConnection(HookId),
+}
+
+#[derive(ThisError, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NodeDropConnectionError {
-    #[error("hook [{hook}] of port [{port}] does not have any connection")]
-    NoConnection{port: PortId, hook: HookId},
-    #[error("there is no port [{0}] for this node")]
+    #[error("there is no port [{0:?}] for this node")]
     BadPort(PortId),
-    #[error("there is no hook [{hook}] for port [{port}]")]
-    BadHook{port: PortId, hook: HookId},
+    #[error("port [{port:?}] had a drop connection error: {err}")]
+    PortError{port: PortId, err: PortDropConnectionError},
 }
 
 #[derive(ThisError, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GraphDropConnectionError {
-    #[error("node [{0}] does not exist in the graph")]
+    #[error("node [{0:?}] does not exist in the graph")]
     BadNodeId(NodeId),
-    #[error("node [{node}] experienced an error:\n{err}")]
+    #[error("node [{node:?}] experienced an error: {err}")]
     NodeError{node: NodeId, err: NodeDropConnectionError},
 }
 
-impl<Node> Default for Graph<Node> {
+impl<Node: NodeTrait> Default for Graph<Node> {
     fn default() -> Self {
         Self::new()
     }
