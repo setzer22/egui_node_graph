@@ -7,7 +7,9 @@ use super::*;
 use egui::epaint::{CubicBezierShape, RectShape};
 use egui::*;
 
-pub type HookLocations = HashMap<ConnectionId, Pos2>;
+/// For each hook, this specifies the (location, tangent vector) for any curve
+/// rendering a connection out of it.
+pub type HookGeometry = HashMap<ConnectionId, (Pos2, Vec2)>;
 
 /// Ports communicate connection and disconnection events to the parent graph
 /// when drawn.
@@ -56,9 +58,32 @@ pub enum NodeResponse<Node: NodeTrait> {
         node_id: NodeId,
         node: Node,
     },
+    /// Emitted for each disconnection that has occurred in the graph
+    DisconnectEvent{ input: InputId, output: OutputId },
     /// Emitted when a node is interacted with, and should be raised
     RaiseNode(NodeId),
     Content(ContentResponseOf<Node>),
+}
+
+impl<Node: NodeTrait> NodeResponse<Node> {
+    fn disconnect(a: ConnectionId, b: ConnectionId) -> Result<Self, ()> {
+        let (input, output) = match a.port() {
+            PortId::Input(_) => {
+                match b.as_output() {
+                    Some(output) => (a.assume_input(), output),
+                    None => return Err(()),
+                }
+            }
+            PortId::Output(_) => {
+                match b.as_input() {
+                    Some(input) => (input, a.assume_output()),
+                    None => return Err(()),
+                }
+            }
+        };
+
+        Ok(Self::DisconnectEvent { input, output })
+    }
 }
 
 /// Automatically convert a Port Response into a NodeResponse
@@ -68,12 +93,11 @@ impl<N: NodeTrait> From<PortResponse<N::DataType>> for NodeResponse<N> {
     }
 }
 
-pub struct NodeUiState<'a, DataType> {
-    pub pan: Pos2,
-    pub hook_locations: &'a mut HookLocations,
-    pub node_id: NodeId,
-    pub ongoing_drag: Option<(ConnectionId, &'a DataType)>,
-    pub selected_nodes: Vec<NodeId>,
+pub struct EditorUiState<'a, DataType> {
+    pub pan: Vec2,
+    pub hook_geometry: &'a mut HookGeometry,
+    pub ongoing_drag: Option<(ConnectionId, DataType)>,
+    pub selected_nodes: &'a Vec<NodeId>,
 }
 
 /// The return value of [`draw_graph_editor`]. This value can be used to make
@@ -89,6 +113,7 @@ impl<Context: GraphContextTrait> GraphEditorState<Context> {
         &mut self,
         ui: &mut Ui,
         all_kinds: impl NodeTemplateIter<Item = Context::NodeTemplate>,
+        app_state: &mut AppStateOf<Context::Node>,
     ) -> GraphResponse<Context::Node> {
         // This causes the graph editor to use as much free space as it can.
         // (so for windows it will use up to the resizeably set limit
@@ -101,7 +126,7 @@ impl<Context: GraphContextTrait> GraphEditorState<Context> {
         let mut cursor_in_finder = false;
 
         // Gets filled with the port locations as nodes are drawn
-        let mut hook_locations = HookLocations::new();
+        let mut hook_geometry = HookGeometry::new();
 
         // The responses returned from node drawing have side effects that are best
         // executed at the end of this function.
@@ -112,26 +137,32 @@ impl<Context: GraphContextTrait> GraphEditorState<Context> {
 
         debug_assert_eq!(
             self.node_order.iter().copied().collect::<HashSet<_>>(),
-            self.graph.iter_nodes().collect::<HashSet<_>>(),
+            self.graph.iter_nodes().map(|(id, _)| id).collect::<HashSet<_>>(),
             "The node_order field of the GraphEditorself was left in an \
-        inconsistent self. It has either more or less values than the graph."
+            inconsistent state. It has either more or less values than the graph."
         );
+
+        let ongoing_drag = self.connection_in_progress
+            .and_then(|connection| self.graph.node(connection.node()).map(|n| (connection, n)))
+            .and_then(|(connection, n)| n.port_data_type(connection.port()).map(|d| (connection, d)));
+
+        let mut state = EditorUiState {
+            pan: self.pan_zoom.pan + editor_rect.min.to_vec2(),
+            hook_geometry: &mut hook_geometry,
+            ongoing_drag: ongoing_drag.clone(),
+            selected_nodes: &self.selected_nodes,
+        };
 
         /* Draw nodes */
         for node_id in self.node_order.iter().copied() {
-            let responses = GraphNodeWidget {
-                position: self.node_positions.get_mut(node_id).unwrap(),
-                graph: &mut self.graph,
-                port_locations: &mut port_locations,
-                node_id,
-                ongoing_drag: self.connection_in_progress,
-                selected: self
-                    .selected_node
-                    .map(|selected| selected == node_id)
-                    .unwrap_or(false),
-                pan: self.pan_zoom.pan + editor_rect.min.to_vec2(),
-            }
-            .show(ui, &self.user_state);
+            let responses = match self.graph.node_mut(node_id, |node| {
+                node.show(ui, app_state, node_id, &mut state, &self.context)
+            }) {
+                Ok(responses) => responses,
+                // TODO(MXG): Should we alert the user to this error? It really
+                // shouldn't happen...
+                Err(()) => continue,
+            };
 
             // Actions executed later
             delayed_responses.extend(responses);
@@ -152,14 +183,9 @@ impl<Context: GraphContextTrait> GraphEditorState<Context> {
             node_finder_area.show(ui.ctx(), |ui| {
                 if let Some(node_kind) = node_finder.show(ui, all_kinds) {
                     let new_node = self.graph.add_node(
-                        node_kind.node_graph_label(),
-                        node_kind.user_data(),
-                        |graph, node_id| node_kind.build_node(graph, &self.user_state, node_id),
+                        node_kind.build_node(cursor_pos - state.pan, app_state),
                     );
-                    self.node_positions.insert(
-                        new_node,
-                        cursor_pos - self.pan_zoom.pan - editor_rect.min.to_vec2(),
-                    );
+
                     self.node_order.push(new_node);
 
                     should_close_node_finder = true;
@@ -179,73 +205,95 @@ impl<Context: GraphContextTrait> GraphEditorState<Context> {
         }
 
         /* Draw connections */
-        if let Some((_, ref locator)) = self.connection_in_progress {
-            let port_type = self.graph.any_param_type(*locator).unwrap();
-            let connection_color = port_type.data_type_color(&self.user_state);
-            let start_pos = port_locations[locator];
-            let (src_pos, dst_pos) = match locator {
-                AnyParameterId::Output(_) => (start_pos, cursor_pos),
-                AnyParameterId::Input(_) => (cursor_pos, start_pos),
+        if let Some((connection, data_type)) = &ongoing_drag {
+            let connection_color = self.context.recommend_data_type_color(&data_type);
+            let hook_geom = hook_geometry[connection];
+            let cursor_geom = (cursor_pos, (hook_geom.0 - cursor_pos).normalized());
+            let (start_geom, end_geom) = match connection.port() {
+                PortId::Input(_) => (cursor_geom, hook_geom),
+                PortId::Output(_) => (hook_geom, cursor_geom),
             };
-            draw_connection(ui.painter(), src_pos, dst_pos, connection_color);
+            draw_connection(ui.painter(), start_geom, end_geom, connection_color);
         }
 
         for (input, output) in self.graph.iter_connections() {
-            let port_type = self
+            let data_type = self
                 .graph
-                .any_param_type(AnyParameterId::Output(output))
-                .unwrap();
-            let connection_color = port_type.data_type_color(&self.user_state);
-            let src_pos = port_locations[&AnyParameterId::Output(output)];
-            let dst_pos = port_locations[&AnyParameterId::Input(input)];
-            draw_connection(ui.painter(), src_pos, dst_pos, connection_color);
+                .node(input.node()).expect("node missing for a connection")
+                .port_data_type(input.port().into()).expect("port missing for a connection");
+            let connection_color = self.context.recommend_data_type_color(&data_type);
+            let start_geom = hook_geometry[&output.into()];
+            let end_geom = hook_geometry[&input.into()];
+            draw_connection(ui.painter(), start_geom, end_geom, connection_color);
         }
 
         /* Handle responses from drawing nodes */
 
         // Some responses generate additional responses when processed. These
         // are stored here to report them back to the user.
-        let mut extra_responses: Vec<NodeResponse<UserResponse, NodeData>> = Vec::new();
+        let mut extra_responses = Vec::new();
 
         for response in delayed_responses.iter() {
             match response {
-                NodeResponse::ConnectEventStarted(node_id, port) => {
-                    self.connection_in_progress = Some((*node_id, *port));
-                }
-                NodeResponse::ConnectEventEnded { input, output } => {
-                    self.graph.add_connection(*output, *input)
+                NodeResponse::Port(port_response) => {
+                    match port_response {
+                        PortResponse::ConnectEventStarted(connection) => {
+                            self.connection_in_progress = Some(*connection);
+                        }
+                        PortResponse::MoveEvent(connection) => {
+                            if let Ok(complement) = self.graph.drop_connection(*connection) {
+                                extra_responses.push(
+                                    NodeResponse::disconnect(*connection, complement)
+                                    .expect("invalid input/output pair for connection")
+                                );
+                                if let Some(available_hook) = self.graph.node(complement.node())
+                                    .and_then(|n| n.available_hook(complement.port()))
+                                {
+                                    self.connection_in_progress = Some(
+                                        ConnectionId(complement.node(), complement.port(), available_hook)
+                                    );
+                                }
+                            }
+                        }
+                        PortResponse::ConnectEventEnded { output, input } => {
+                            self.graph.add_connection(*output, *input);
+                        }
+                        PortResponse::Value(_) => {
+                            // User-defined response type
+                        }
+                    }
                 }
                 NodeResponse::CreatedNode(_) => {
-                    //Convenience NodeResponse for users
+                    // Convenience NodeResponse for users
                 }
                 NodeResponse::SelectNode(node_id) => {
-                    self.selected_node = Some(*node_id);
+                    if !ui.input().modifiers.shift {
+                        self.selected_nodes.clear();
+                    }
+                    if !self.selected_nodes.contains(node_id) {
+                        self.selected_nodes.push(*node_id);
+                    }
+                }
+                NodeResponse::DisconnectEvent { input, .. } => {
+                    self.graph.drop_connection(input.clone().into());
                 }
                 NodeResponse::DeleteNodeUi(node_id) => {
-                    let (node, disc_events) = self.graph.remove_node(*node_id);
-                    // Pass the full node as a response so library users can
-                    // listen for it and get their user data.
-                    extra_responses.push(NodeResponse::DeleteNodeFull {
-                        node_id: *node_id,
-                        node,
-                    });
-                    extra_responses.extend(
-                        disc_events
-                            .into_iter()
-                            .map(|(input, output)| NodeResponse::DisconnectEvent { input, output }),
-                    );
-                    self.node_positions.remove(*node_id);
-                    // Make sure to not leave references to old nodes hanging
-                    if self.selected_node.map(|x| x == *node_id).unwrap_or(false) {
-                        self.selected_node = None;
+                    if let Some((node, disc_events)) = self.graph.remove_node(*node_id) {
+                        // Pass the full node as a response so library users can
+                        // listen for it and get their user data.
+                        extra_responses.push(NodeResponse::DeleteNodeFull {
+                            node_id: *node_id,
+                            node,
+                        });
+                        extra_responses.extend(
+                            disc_events
+                                .into_iter()
+                                .map(|(input, output)| NodeResponse::DisconnectEvent { input, output }),
+                        );
                     }
+                    // Make sure to not leave references to old nodes hanging
+                    self.selected_nodes.retain(|id| *id != *node_id);
                     self.node_order.retain(|id| *id != *node_id);
-                }
-                NodeResponse::DisconnectEvent { input, output } => {
-                    let other_node = self.graph.get_input(*input).node();
-                    self.graph.remove_connection(*input);
-                    self.connection_in_progress =
-                        Some((other_node, AnyParameterId::Output(*output)));
                 }
                 NodeResponse::RaiseNode(node_id) => {
                     let old_pos = self
@@ -256,7 +304,7 @@ impl<Context: GraphContextTrait> GraphEditorState<Context> {
                     self.node_order.remove(old_pos);
                     self.node_order.push(*node_id);
                 }
-                NodeResponse::User(_) => {
+                NodeResponse::Content(_) => {
                     // These are handled by the user code.
                 }
                 NodeResponse::DeleteNodeFull { .. } => {
@@ -290,10 +338,15 @@ impl<Context: GraphContextTrait> GraphEditorState<Context> {
             self.pan_zoom.pan += ui.ctx().input().pointer.delta();
         }
 
-        // Deselect and deactivate finder if the editor backround is clicked,
-        // *or* if the the mouse clicks off the ui
+        if click_on_background && !ui.input().modifiers.shift {
+            // Clear the selected nodes if the background is clicked when shift
+            // is not selected.
+            self.selected_nodes.clear();
+        }
+
         if click_on_background || (mouse.any_click() && !cursor_in_editor) {
-            self.selected_node = None;
+            // Deactivate finder if the editor backround is clicked,
+            // *or* if the the mouse clicks off the ui
             self.node_finder = None;
         }
 
@@ -303,15 +356,28 @@ impl<Context: GraphContextTrait> GraphEditorState<Context> {
     }
 }
 
-fn draw_connection(painter: &Painter, src_pos: Pos2, dst_pos: Pos2, color: Color32) {
+fn calculate_control(
+    a_pos: Pos2,
+    b_pos: Pos2,
+    tangent: Vec2,
+) -> Pos2 {
+    let delta = ((a_pos - b_pos).dot(tangent).abs()/2.0).max(30.0);
+    a_pos + delta*tangent
+}
+
+fn draw_connection(
+    painter: &Painter,
+    (start_pos, start_tangent): (Pos2, Vec2),
+    (end_pos, end_tangent): (Pos2, Vec2),
+    color: Color32
+) {
     let connection_stroke = egui::Stroke { width: 5.0, color };
 
-    let control_scale = ((dst_pos.x - src_pos.x) / 2.0).max(30.0);
-    let src_control = src_pos + Vec2::X * control_scale;
-    let dst_control = dst_pos - Vec2::X * control_scale;
+    let start_control = calculate_control(start_pos, end_pos, start_tangent);
+    let end_control = calculate_control(end_pos, start_pos, end_tangent);
 
     let bezier = CubicBezierShape::from_points_stroke(
-        [src_pos, src_control, dst_control, dst_pos],
+        [start_pos, start_control, end_control, end_pos],
         false,
         Color32::TRANSPARENT,
         connection_stroke,

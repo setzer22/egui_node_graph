@@ -56,6 +56,34 @@ impl ConnectionId {
     }
 }
 
+impl InputId {
+    pub fn node(&self) -> NodeId {
+        self.0
+    }
+
+    pub fn port(&self) -> InputPortId {
+        self.1
+    }
+
+    pub fn hook(&self) -> HookId {
+        self.2
+    }
+}
+
+impl OutputId {
+    pub fn node(&self) -> NodeId {
+        self.0
+    }
+
+    pub fn port(&self) -> OutputPortId {
+        self.1
+    }
+
+    pub fn hook(&self) -> HookId {
+        self.2
+    }
+}
+
 #[cfg_attr(feature = "persistence", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum PortId {
@@ -105,10 +133,7 @@ impl From<OutputId> for ConnectionId {
 
 impl From<ConnectionId> for NodeId {
     fn from(c: ConnectionId) -> Self {
-        match c {
-            ConnectionId::Input(input) => input.0,
-            ConnectionId::Output(output) => output.0,
-        }
+        c.node()
     }
 }
 
@@ -132,7 +157,19 @@ impl From<InputId> for PortId {
 
 impl From<OutputId> for PortId {
     fn from(c: OutputId) -> Self {
-        PortId::Output(c)
+        PortId::Output(c.port())
+    }
+}
+
+impl From<OutputPortId> for PortId {
+    fn from(value: OutputPortId) -> Self {
+        PortId::Output(value)
+    }
+}
+
+impl From<InputPortId> for PortId {
+    fn from(value: InputPortId) -> Self {
+        PortId::Input(value)
     }
 }
 

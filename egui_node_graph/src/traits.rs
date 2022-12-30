@@ -4,7 +4,13 @@ use crate::color_hex_utils::color_from_hex;
 /// This trait must be implemented by the `ValueType` generic parameter of the
 /// [`Graph`]. The trait allows drawing custom inline widgets for the different
 /// types of the node graph.
-pub trait ValueTrait {
+pub trait ValueTrait: Clone + std::fmt::Debug {
+    // TODO(MXG): We require the bounds Clone + Debug for ValueTrait in order to
+    // use the derive macro to implement Clone and Debug for PortResponse, but
+    // ValueTrait should not actually need Clone and Debug for that to work. We
+    // can remove this bound if we manually implement Clone and Debug or if this
+    // bug is ever fixed: https://github.com/rust-lang/rust/issues/26925
+
     type Response: ResponseTrait;
     /// This method will be called for each input parameter with a widget.
     ///
@@ -20,7 +26,7 @@ pub trait ValueTrait {
 /// This trait must be implemented by the `DataType` associated type of any
 /// [`NodeTrait`]. This trait tells the library how to visually expose data types
 /// to the user.
-pub trait DataTypeTrait: Clone {
+pub trait DataTypeTrait: Clone + std::fmt::Debug {
 
     /// This associated type gives the type of a raw value
     type Value: ValueTrait;
@@ -69,7 +75,7 @@ pub trait PortTrait {
         &mut self,
         ui: &mut egui::Ui,
         id: (NodeId, PortId),
-        state: &NodeUiState<Self::DataType>,
+        state: &mut EditorUiState<Self::DataType>,
         style: &dyn GraphStyleTrait<DataType=Self::DataType>,
     ) -> (egui::Rect, Vec<PortResponse<Self::DataType>>);
     // TODO(@mxgrey): All of these Vec return types should be changed to
@@ -77,14 +83,20 @@ pub trait PortTrait {
     // stable feature. That way we can avoid memory allocations in the return
     // value.
 
-    /// Drops the connection at the specified hook. Returns [`Ok`] if the drop
-    /// was successful or [`Err`] if the hook does not exist or did not have a
-    /// connection.
-    fn drop_connection(&mut self, id: HookId) -> Result<(), PortDropConnectionError>;
+    /// Get the data type information for this port.
+    fn data_type(&self) -> Self::DataType;
+
+    /// Get the ID of an available hook, if one exists.
+    fn available_hook(&self) -> Option<HookId>;
+
+    /// Drops the connection at the specified hook. Returns the ID of the
+    /// other side of the dropped connection if the drop was successful or
+    /// [`Err`] if the hook does not exist or did not have a connection.
+    fn drop_connection(&mut self, id: HookId) -> Result<ConnectionId, PortDropConnectionError>;
 
     /// Remove all connections that this Port is holding and report the ID
-    /// information for them.
-    fn drop_all_connections(&mut self) -> Vec<HookId>;
+    /// information for them along with what they were connected to.
+    fn drop_all_connections(&mut self) -> Vec<(HookId, ConnectionId)>;
 
     /// Connect a hook in this port to another hook. This method should only be
     /// called by a [`NodeTrait`] implementation. To create a connection as a
@@ -127,9 +139,16 @@ pub trait NodeTrait {
         ui: &mut egui::Ui,
         app: &<Self::Content as NodeContentTrait>::AppState,
         id: NodeId,
-        state: NodeUiState<Self::DataType>,
+        state: &mut EditorUiState<Self::DataType>,
         style: &dyn GraphStyleTrait<DataType=Self::DataType>,
     ) -> Vec<NodeResponse<Self>> where Self: Sized;
+
+    /// Get the data type of the specified port if it exists, or None if the
+    /// port does not exist.
+    fn port_data_type(&self, port_id: PortId) -> Option<Self::DataType>;
+
+    /// Get the ID of an available hook, if one exists.
+    fn available_hook(&self, port_id: PortId) -> Option<HookId>;
 
     /// Drops the connection at the specified port and hook. Returns [`Ok`] if
     /// the drop was successful or [`Err`] if the hook does not exist or did not
@@ -137,11 +156,11 @@ pub trait NodeTrait {
     fn drop_connection(
         &mut self,
         id: (PortId, HookId)
-    ) -> Result<(), NodeDropConnectionError>;
+    ) -> Result<ConnectionId, NodeDropConnectionError>;
 
     /// Remove all connections that this Node is holding and report the ID
     /// information for them.
-    fn drop_all_connections(&mut self) -> Vec<(PortId, HookId)>;
+    fn drop_all_connections(&mut self) -> Vec<(PortId, HookId, ConnectionId)>;
 
     /// Connect a hook in this node to another hook. This method can only be
     /// called by the [`Graph`] class because only the graph module can produce
@@ -152,6 +171,7 @@ pub trait NodeTrait {
 pub type ContentResponseOf<Node> = <<Node as NodeTrait>::Content as NodeContentTrait>::Response;
 pub type DataTypeOf<Node> = <Node as NodeTrait>::DataType;
 pub type ValueResponseOf<Node> = <<DataTypeOf<Node> as DataTypeTrait>::Value as ValueTrait>::Response;
+pub type AppStateOf<Node> = <<Node as NodeTrait>::Content as NodeContentTrait>::AppState;
 
 /// This trait can be implemented by any user type. The trait tells the library
 /// how to enumerate the node templates it will present to the user as part of
@@ -167,7 +187,7 @@ pub trait NodeTemplateIter {
 /// graph, what is their name, and what are their input / output parameters.
 pub trait NodeTemplateTrait: Clone {
     /// What kind of node can be produced by this template
-    type Node;
+    type Node: NodeTrait;
 
     /// Returns a descriptive name for the node kind, used in the node finder.
     fn node_finder_label(&self) -> &str;
@@ -176,7 +196,11 @@ pub trait NodeTemplateTrait: Clone {
     fn node_graph_label(&self) -> String;
 
     /// This function is run when this node kind gets added to the graph.
-    fn build_node(&self) -> Self::Node;
+    fn build_node(
+        &self,
+        position: egui::Pos2,
+        app_state: &mut AppStateOf<Self::Node>
+    ) -> Self::Node;
 }
 
 /// The custom user response types when drawing nodes in the graph must
@@ -312,8 +336,7 @@ pub trait GraphStyleTrait {
     }
 }
 
-pub trait GraphContextTrait {
-    type Node: NodeTrait;
-    type Style: GraphStyleTrait<DataType=<Self::Node as NodeTrait>::DataType>;
+pub trait GraphContextTrait: GraphStyleTrait {
+    type Node: NodeTrait<DataType=Self::DataType>;
     type NodeTemplate: NodeTemplateTrait<Node=Self::Node>;
 }

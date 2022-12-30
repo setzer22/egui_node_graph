@@ -9,7 +9,7 @@ use epaint::RectShape;
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "persistence", derive(Serialize, Deserialize))]
 pub struct ColumnNode<Content, DataType, InputPort, OutputPort> {
-    pub position: Vec2,
+    pub position: Pos2,
     pub label: String,
     pub content: Content,
     /// The input ports of the graph
@@ -45,21 +45,21 @@ where
         &mut self,
         parent_ui: &mut egui::Ui,
         app: &<Self::Content as NodeContentTrait>::AppState,
-        id: NodeId,
-        state: NodeUiState<Self::DataType>,
+        node_id: NodeId,
+        state: &mut EditorUiState<Self::DataType>,
         style: &dyn GraphStyleTrait<DataType=DataType>,
     ) -> Vec<NodeResponse<Self>> {
         let mut ui = parent_ui.child_ui_with_id_source(
-            Rect::from_min_size(state.pan + self.position, [self.size_hint, 0.0].into()),
+            Rect::from_min_size(self.position + state.pan, [self.size_hint, 0.0].into()),
             Layout::default(),
-            id,
+            node_id,
         );
 
         let margin = egui::vec2(15.0, 5.0);
         let mut responses = Vec::<NodeResponse<Self>>::new();
 
-        let background_color = style.recommend_node_background_color(&ui, state.node_id);
-        let text_color = style.recommend_node_text_color(&ui, state.node_id);
+        let background_color = style.recommend_node_background_color(&ui, node_id);
+        let text_color = style.recommend_node_text_color(&ui, node_id);
 
         ui.visuals_mut().widgets.noninteractive.fg_stroke = Stroke::new(2.0, text_color);
 
@@ -81,14 +81,14 @@ where
             inner_rect
         };
 
-        let title_height;
+        let mut title_height = 0.0;
         let mut child_ui = ui.child_ui(inner_rect, *ui.layout());
         child_ui.vertical(|ui| {
             let title_rect = ui.horizontal(|ui| {
                 ui.add(Label::new(
-                    RichText::new(self.label)
+                    RichText::new(&self.label)
                         .text_style(TextStyle::Button)
-                        .color(style.recommend_node_text_color(ui, state.node_id)),
+                        .color(style.recommend_node_text_color(ui, node_id)),
                 ));
                 ui.add_space(8.0); // The size of the little cross icon
             }).response.rect;
@@ -98,7 +98,7 @@ where
             for (input_id, port) in &mut self.inputs {
                 ui.horizontal(|ui| {
                     let (rect, port_responses): (egui::Rect, Vec<PortResponse<DataType>>) = port.show(
-                        ui, (id, PortId::Input(input_id)), &state, style
+                        ui, (node_id, PortId::Input(input_id)), state, style
                     );
                     responses.extend(port_responses.into_iter().map(NodeResponse::Port));
                     self.size_hint = self.size_hint.max(rect.width());
@@ -108,14 +108,14 @@ where
             for (output_id, port) in &mut self.outputs {
                 ui.with_layout(egui::Layout::right_to_left(), |ui| {
                     let (rect, port_responses): (egui::Rect, Vec<PortResponse<DataType>>) = port.show(
-                        ui, (id, PortId::Output(output_id)), &state, style
+                        ui, (node_id, PortId::Output(output_id)), state, style
                     );
                     responses.extend(port_responses.into_iter().map(NodeResponse::Port));
                     self.size_hint = self.size_hint.max(rect.width());
                 });
             }
 
-            responses.extend(self.content.content_ui(ui, app, id).into_iter().map(NodeResponse::Content));
+            responses.extend(self.content.content_ui(ui, app, node_id).into_iter().map(NodeResponse::Content));
         });
 
         let (shape, outline, outer_rect) = {
@@ -131,9 +131,9 @@ where
                 rect: titlebar_rect,
                 rounding,
                 fill: self.content.titlebar_color(
-                    &ui, app, id,
+                    &ui, app, node_id,
                 ).unwrap_or_else(|| style.recommend_node_background_color(
-                    &ui, id).lighten(0.8)
+                    &ui, node_id).lighten(0.8)
                 ),
                 stroke: Stroke::none(),
             });
@@ -160,7 +160,7 @@ where
                 stroke: Stroke::none(),
             });
 
-            let outline = if state.selected_nodes.contains(&id) {
+            let outline = if state.selected_nodes.contains(&node_id) {
                 Shape::Rect(RectShape {
                     rect: titlebar_rect
                         .union(body_rect)
@@ -194,11 +194,11 @@ where
             let resp = ui.allocate_rect(rect, Sense::click());
 
             let (stroke, fill) = if resp.dragged() {
-                style.recommend_close_button_clicked_colors(&ui, state.node_id)
+                style.recommend_close_button_clicked_colors(&ui, node_id)
             } else if resp.hovered() {
-                style.recommend_close_button_hover_colors(&ui, state.node_id)
+                style.recommend_close_button_hover_colors(&ui, node_id)
             } else {
-                style.recommend_close_button_passive_colors(&ui, state.node_id)
+                style.recommend_close_button_passive_colors(&ui, node_id)
             };
 
             ui.painter().rect(rect, 0.5, fill, (0_f32, fill));
@@ -212,37 +212,51 @@ where
 
             resp
         }.clicked() {
-            responses.push(NodeResponse::DeleteNodeUi(state.node_id));
+            responses.push(NodeResponse::DeleteNodeUi(node_id));
         }
 
         let window_response = ui.interact(
             outer_rect,
-            Id::new((state.node_id, "window")),
+            Id::new((node_id, "window")),
             Sense::click_and_drag(),
         );
 
         // Movement
         self.position += window_response.drag_delta();
         if window_response.drag_delta().length_sq() > 0.0 {
-            responses.push(NodeResponse::RaiseNode(state.node_id));
+            responses.push(NodeResponse::RaiseNode(node_id));
         }
 
         // Node selection
         if responses.is_empty() && window_response.clicked_by(PointerButton::Primary) {
-            responses.push(NodeResponse::SelectNode(state.node_id));
-            responses.push(NodeResponse::RaiseNode(state.node_id));
+            responses.push(NodeResponse::SelectNode(node_id));
+            responses.push(NodeResponse::RaiseNode(node_id));
         }
 
         responses
     }
 
+    fn port_data_type(&self, port_id: PortId) -> Option<Self::DataType> {
+        match port_id {
+            PortId::Input(port_id) => self.inputs.get(port_id).map(|p| p.data_type()),
+            PortId::Output(port_id) => self.outputs.get(port_id).map(|p| p.data_type()),
+        }
+    }
+
+    fn available_hook(&self, port_id: PortId) -> Option<HookId> {
+        match port_id {
+            PortId::Input(port_id) => self.inputs.get(port_id).map(|p| p.available_hook()).flatten(),
+            PortId::Output(port_id) => self.outputs.get(port_id).map(|p| p.available_hook()).flatten(),
+        }
+    }
+
     fn drop_connection(
         &mut self,
         (port, hook): (PortId, HookId)
-    ) -> Result<(), NodeDropConnectionError> {
+    ) -> Result<ConnectionId, NodeDropConnectionError> {
         match port {
             PortId::Input(input_port) => {
-                match self.inputs.get(input_port) {
+                match self.inputs.get_mut(input_port) {
                     Some(input_port) => {
                         input_port.drop_connection(hook).map_err(
                             |err| NodeDropConnectionError::PortError { port, err }
@@ -254,7 +268,7 @@ where
                 }
             }
             PortId::Output(output_port) => {
-                match self.outputs.get(output_port) {
+                match self.outputs.get_mut(output_port) {
                     Some(output_port) => {
                         output_port.drop_connection(hook).map_err(
                             |err| NodeDropConnectionError::PortError { port, err }
@@ -268,17 +282,17 @@ where
         }
     }
 
-    fn drop_all_connections(&mut self) -> Vec<(PortId, HookId)> {
-        let dropped = Vec::new();
+    fn drop_all_connections(&mut self) -> Vec<(PortId, HookId, ConnectionId)> {
+        let mut dropped = Vec::new();
         for (id, port) in &mut self.inputs {
             dropped.extend(port.drop_all_connections().into_iter().map(
-                |hook| (PortId::Input(id), hook)
+                |(hook, connection)| (PortId::Input(id), hook, connection)
             ));
         }
 
         for (id, port) in &mut self.outputs {
             dropped.extend(port.drop_all_connections().into_iter().map(
-                |hook| (PortId::Output(id), hook)
+                |(hook, connection)| (PortId::Output(id), hook, connection)
             ));
         }
 

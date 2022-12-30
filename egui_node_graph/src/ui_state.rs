@@ -18,12 +18,10 @@ pub struct GraphEditorState<Context: GraphContextTrait> {
     pub node_order: Vec<NodeId>,
     /// An ongoing connection interaction: The mouse has dragged away from a
     /// port and the user is holding the click
-    pub connection_in_progress: Option<(NodeId, ConnectionId)>,
-    /// The currently selected node. Some interface actions depend on the
-    /// currently selected node.
-    pub selected_node: Option<NodeId>,
-    /// The position of each node.
-    pub node_positions: SecondaryMap<NodeId, egui::Pos2>,
+    pub connection_in_progress: Option<ConnectionId>,
+    /// The currently selected nodes. Some interface actions depend on the
+    /// currently selected nodes.
+    pub selected_nodes: Vec<NodeId>,
     /// The node finder is used to create new nodes.
     pub node_finder: Option<NodeFinder>,
     /// The panning of the graph viewport.
@@ -37,8 +35,7 @@ impl<Context: GraphContextTrait> GraphEditorState<Context> {
             graph: Graph::new(),
             node_order: Vec::new(),
             connection_in_progress: None,
-            selected_node: None,
-            node_positions: SecondaryMap::new(),
+            selected_nodes: Vec::new(),
             node_finder: None,
             pan_zoom: PanZoom {
                 pan: egui::Vec2::ZERO,

@@ -23,7 +23,7 @@ pub enum Side {
 }
 
 /// A port that displays vertically.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 #[cfg_attr(feature = "persistence", derive(Serialize, Deserialize))]
 pub struct VerticalPort<DataType> {
     /// Name of the port. This will be displayed next to the port icon.
@@ -38,7 +38,7 @@ pub struct VerticalPort<DataType> {
     /// What side of the block will this port be rendered on
     pub side: Side,
     /// List of existing hooks and whether or not they have a connection
-    hooks: SlotMap<HookId, ()>,
+    hooks: SlotMap<HookId, Option<ConnectionToken>>,
     /// The next hook that's available for a connection
     available_hook: Option<HookId>,
     /// When true, the node is shown inline inside the node graph.
@@ -58,21 +58,23 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
         &mut self,
         ui: &mut egui::Ui,
         id: (NodeId, PortId),
-        state: &NodeUiState<DataType>,
+        state: &mut EditorUiState<DataType>,
         context: &dyn GraphStyleTrait<DataType=DataType>,
-        show_value: Option<&DataType::Value>,
+        show_value: Option<&mut DataType::Value>,
+        tangent_vec: egui::Vec2,
     ) -> (egui::Rect, Vec<PortResponse<DataType>>) {
-        let value_rect_opt = None;
-        let mut value_resp = Vec::<<DataType::Value as ValueTrait>::Response>::default();
+        let mut value_rect_opt = None;
+        let mut value_responses = Vec::<<DataType::Value as ValueTrait>::Response>::default();
         let label_rect = ui.horizontal(|ui| {
             ui.add_space(15.0);
-            ui.label(self.name);
+            ui.label(&self.name);
             if let Some(value) = show_value {
                 if self.hooks.len() == 0 || (self.hooks.len() == 1 && self.available_hook.is_some()) {
                     // There are no connections to this port, so we should show
                     // the value input widget.
                     let (value_rect, value_resp) = value.show(ui);
                     value_rect_opt = Some(value_rect);
+                    value_responses = value_resp;
                 }
             }
         }).response.rect;
@@ -128,8 +130,8 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
             // That function would probably want to take in a port_rect and a
             // hook_rect_iterator argument.
             let ui_port_response = ui.allocate_rect(port_rect, egui::Sense::click_and_drag());
-            if let Some((dragged_connection, dragged_data_type)) = state.ongoing_drag {
-                let dragged_port: (NodeId, PortId) = dragged_connection.into();
+            if let Some((dragged_connection, dragged_data_type)) = &state.ongoing_drag {
+                let dragged_port: (NodeId, PortId) = dragged_connection.clone().into();
                 if dragged_port == id {
                     // The port that is being dragged is this one. We should use
                     // the acceptance color while it is being dragged
@@ -140,21 +142,12 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
                 if let Some(available_hook) = self.available_hook {
                     let connection_possible = PortResponse::connect_event_ended(
                         ConnectionId(id.0, id.1, available_hook),
-                        dragged_connection,
+                        *dragged_connection,
                     );
                     if let Some(connection_possible) = connection_possible {
                         if dragged_data_type.is_compatible(&self.data_type) {
                             if ui_port_response.hovered() || ui_port_response.drag_released() {
                                 let resp = if ui_port_response.drag_released() {
-                                    if self.connection_limit <= Some(hook_count) {
-                                        // This port cannot support any more connections
-                                        self.available_hook = None;
-                                    } else {
-                                        // Create a new available port since the currently
-                                        // available one is about to be consumed
-                                        self.available_hook = Some(self.hooks.insert(()));
-                                    }
-
                                     Some(connection_possible)
                                 } else {
                                     None
@@ -176,7 +169,6 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
                             );
                         }
                     }
-
                 }
 
                 // A connection is not possible, either because all the hooks
@@ -192,7 +184,7 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
 
             let hook_selected: Option<(HookId, egui::Response)> = {
                 let mut next_hook_y = top_hook_y;
-                self.hooks.iter().find_map(|(hook_id, ())| {
+                self.hooks.iter().find_map(|(hook_id, _)| {
                     let hook_y = next_hook_y;
                     next_hook_y += hook_spacing + 2.0*radius;
                     let resp = ui.allocate_rect(
@@ -384,13 +376,21 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
             let color = hook_color_map.get(&hook_id).unwrap_or(&default_hook_color);
             let p = egui::pos2(hook_x, next_hook_y);
             ui.painter().circle(p, radius, *color, (0_f32, *color));
-            state.hook_locations.insert(ConnectionId(id.0, id.1, hook_id), p);
+            state.hook_geometry.insert(ConnectionId(id.0, id.1, hook_id), (p, tangent_vec));
             next_hook_y += hook_spacing + 2.0*radius;
         }
 
-        let responses = value_resp.into_iter().map(PortResponse::Value)
+        let responses = value_responses.into_iter().map(PortResponse::Value)
             .chain([port_response].into_iter().filter_map(|r| r)).collect();
         return (row_rect.union(port_rect), responses);
+    }
+
+    fn consider_new_available_hook(&mut self) {
+        if self.available_hook.is_none() {
+            if !(self.connection_limit <= Some(self.hooks.len())) {
+                self.available_hook = Some(self.hooks.insert(None));
+            }
+        }
     }
 }
 
@@ -401,10 +401,62 @@ impl<DataType: DataTypeTrait> PortTrait for VerticalPort<DataType> {
         &mut self,
         ui: &mut egui::Ui,
         id: (NodeId, PortId),
-        state: &NodeUiState<Self::DataType>,
+        state: &mut EditorUiState<Self::DataType>,
         style: &dyn GraphStyleTrait<DataType=Self::DataType>,
     ) -> (egui::Rect, Vec<PortResponse<DataType>>) {
-        self.show_impl(ui, id, state, style, None)
+        self.show_impl(ui, id, state, style, None, egui::vec2(1.0, 0.0))
+    }
+
+    fn data_type(&self) -> Self::DataType {
+        self.data_type.clone()
+    }
+
+    fn available_hook(&self) -> Option<HookId> {
+        self.available_hook
+    }
+
+    fn connect(&mut self, from: HookId, to: graph::ConnectionToken) -> Result<(), PortAddConnectionError> {
+        let connection = match self.hooks.get_mut(from) {
+            Some(connection) => connection,
+            None => return Err(PortAddConnectionError::BadHook(from)),
+        };
+
+        *connection = Some(to);
+        if self.available_hook == Some(from) {
+            // We are now using up the available hook, so we should decide
+            // whether to clear it or replace it.
+            self.available_hook = None;
+            self.consider_new_available_hook();
+        }
+
+        Ok(())
+    }
+
+    fn drop_connection(&mut self, id: HookId) -> Result<ConnectionId, PortDropConnectionError> {
+        let connection = match self.hooks.get(id) {
+            Some(Some(connection)) => connection,
+            Some(None) => return Err(PortDropConnectionError::NoConnection(id)),
+            None => return Err(PortDropConnectionError::BadHook(id)),
+        }.connected_to();
+
+        self.hooks.remove(id);
+        self.consider_new_available_hook();
+
+        Ok(connection)
+    }
+
+    fn drop_all_connections(&mut self) -> Vec<(HookId, ConnectionId)> {
+        let mut dropped = Vec::new();
+        for (id, connection) in &self.hooks {
+            if let Some(connection) = connection {
+                dropped.push((id, connection.connected_to()));
+            }
+        }
+
+        self.hooks.clear();
+        self.consider_new_available_hook();
+
+        dropped
     }
 }
 
@@ -415,16 +467,16 @@ impl<DataType: DataTypeTrait> PortTrait for VerticalInputPort<DataType> {
         &mut self,
         ui: &mut egui::Ui,
         id: (NodeId, PortId),
-        state: &NodeUiState<Self::DataType>,
+        state: &mut EditorUiState<Self::DataType>,
         style: &dyn GraphStyleTrait<DataType=Self::DataType>,
     ) -> (egui::Rect, Vec<PortResponse<DataType>>) {
         match self.kind {
             InputKind::ConnectionOnly => {
-                self.port.show_impl(ui, id, state, style, None)
+                self.port.show_impl(ui, id, state, style, None, egui::vec2(-1.0, 0.0))
             },
             InputKind::ConstantOnly => {
-                let label_rect = ui.label(self.port.name).rect;
-                if let Some(default_value) = &self.default_value {
+                let label_rect = ui.label(&self.port.name).rect;
+                if let Some(default_value) = &mut self.default_value {
                     let (value_rect, value_resp) = default_value.show(ui);
                     (
                         label_rect.union(value_rect),
@@ -435,8 +487,28 @@ impl<DataType: DataTypeTrait> PortTrait for VerticalInputPort<DataType> {
                 }
             },
             InputKind::ConnectionOrConstant => {
-                self.port.show_impl(ui, id, state, style, self.default_value.as_ref())
+                self.port.show_impl(ui, id, state, style, self.default_value.as_mut(), egui::vec2(-1.0, 0.0))
             }
         }
+    }
+
+    fn data_type(&self) -> Self::DataType {
+        self.port.data_type.clone()
+    }
+
+    fn available_hook(&self) -> Option<HookId> {
+        self.port.available_hook
+    }
+
+    fn connect(&mut self, from: HookId, to: graph::ConnectionToken) -> Result<(), PortAddConnectionError> {
+        self.port.connect(from, to)
+    }
+
+    fn drop_all_connections(&mut self) -> Vec<(HookId, ConnectionId)> {
+        self.port.drop_all_connections()
+    }
+
+    fn drop_connection(&mut self, id: HookId) -> Result<ConnectionId, PortDropConnectionError> {
+        self.port.drop_connection(id)
     }
 }

@@ -17,7 +17,7 @@ fn shown_inline_default() -> bool {
 /// The graph, containing nodes, input parameters and output parameters. Because
 /// graphs are full of self-referential structures, this type uses the `slotmap`
 /// crate to represent all the inner references in the data.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 #[cfg_attr(feature = "persistence", derive(Serialize, Deserialize))]
 pub struct Graph<Node> {
     /// The Nodes of the graph
@@ -102,20 +102,18 @@ impl<Node: NodeTrait> Graph<Node> {
     /// ids in the pair (the one on `node_id`'s end) will be invalid after
     /// calling this function.
     pub fn remove_node(&mut self, node_id: NodeId) -> Option<(Node, Vec<(InputId, OutputId)>)> {
-        if let Some(removed_node) = self.nodes.remove(node_id) {
+        if let Some(mut removed_node) = self.nodes.remove(node_id) {
             let dropped = removed_node.drop_all_connections().into_iter()
-                .map(|(port_id, hook_id)| {
+                .map(|(port_id, hook_id, connection)| {
                     match port_id {
                         PortId::Input(input_port_id) => {
                             let input_id = InputId(node_id, input_port_id, hook_id);
-                            let output_id = self.input_to_output.get(&input_id)
-                                .expect("graph is missing a connection that is expected by a node");
+                            let output_id = connection.assume_output();
                             (input_id, output_id)
                         },
                         PortId::Output(output_port_id) => {
                             let output_id = OutputId(node_id, output_port_id, hook_id);
-                            let input_id = self.output_to_input.get(&output_id)
-                                .expect("graph is missing a connection that is expected by a node");
+                            let input_id = connection.assume_input();
                             (input_id, output_id)
                         }
                     }
@@ -156,26 +154,32 @@ impl<Node: NodeTrait> Graph<Node> {
             // drop once we exit this scope. When the token drops, it will let
             // the dropped_connections field know, and then self.process_dropped_connections()
             // will clean up any lingering traces of the connection.
-            self.node_mut_or(
-                output_id,
+            match self.node_mut_or(
+                output_id.node(),
                 |output_node| {
                     output_node.connect(
                         output_id.into(),
                         token_for_output_hook,
                     ).map_err(|err| GraphAddConnectionError::OutputNodeError{node: output_id.0, err})
                 },
-                || Err(GraphAddConnectionError::BadOutputNode(output_id.0))
-            ).and_then(|_| {
-                self.node_mut_or(
-                    input_id,
+                || ()
+            ) {
+                Ok(result) => result,
+                Err(()) => Err(GraphAddConnectionError::BadOutputNode(output_id.0)),
+            }.and_then(|_| {
+                match self.node_mut_or(
+                    input_id.node(),
                     |input_node| {
                         input_node.connect(
                             input_id.into(),
                             token_for_input_hook,
                         ).map_err(|err| GraphAddConnectionError::InputNodeError{node: input_id.0, err})
                     },
-                    || Err(GraphAddConnectionError::BadInputNode(input_id.0))
-                )
+                    || ()
+                ) {
+                    Ok(result) => result,
+                    Err(()) => Err(GraphAddConnectionError::BadInputNode(input_id.0))
+                }
             })
         };
 
@@ -184,14 +188,17 @@ impl<Node: NodeTrait> Graph<Node> {
     }
 
     pub fn drop_connection(&mut self, id: ConnectionId) -> Result<ConnectionId, GraphDropConnectionError> {
-        self.node_mut_or(
+        match self.node_mut_or(
             id.node(),
             |node| {
                 node.drop_connection(id.into())
                 .map_err(|err| GraphDropConnectionError::NodeError{node: id.node(), err})
             },
-            || Err(GraphDropConnectionError::BadNode(id.node()))
-        )
+            || ()
+        ) {
+            Ok(result) => result,
+            Err(()) => Err(GraphDropConnectionError::BadNodeId(id.node()))
+        }
     }
 
     pub fn iter_nodes(&self) -> impl Iterator<Item=(NodeId, &Node)> + '_ {
@@ -199,7 +206,9 @@ impl<Node: NodeTrait> Graph<Node> {
     }
 
     pub fn iter_connections(&self) -> impl Iterator<Item=(OutputId, InputId)> + '_ {
-        self.connections.iter().map(|(o, i)| (o, *i))
+        self.connections.iter().filter_map(
+            |(o, i)| o.as_output().map(|o| (o, i.assume_input()))
+        )
     }
 
     pub fn connection(&self, id: &ConnectionId) -> Option<ConnectionId> {
@@ -231,20 +240,24 @@ impl<Node: NodeTrait> Graph<Node> {
             .borrow_mut().drain(..)
         );
 
-        for connection in self.drop_buffer {
-            let complement = self.connections.remove(&connection);
-            if let Some(complement) = complement {
-                self.drop_connection(complement).ok();
-                if let Some(original) = self.connections.remove(&complement) {
-                    self.connections.remove(&original);
-                }
-                self.node_mut(
-                    complement.node(),
-                    |node| {
-                        node.drop_connection(complement.into())
-                    }
-                )
+        let mut complements = Vec::new();
+        for connection in self.drop_buffer.drain(..) {
+            if let Some(complement) = self.connections.remove(&connection) {
+                complements.push((complement, connection));
             }
+        }
+
+        for (complement, original) in complements {
+            self.drop_connection(complement).ok();
+            if let Some(connection) = self.connections.remove(&complement) {
+                assert!(original == connection);
+            }
+            self.node_mut(
+                complement.node(),
+                |node| {
+                    node.drop_connection(complement.into())
+                }
+            );
         }
 
         // Clear both buffers.
@@ -321,6 +334,8 @@ impl<Node: NodeTrait> Default for Graph<Node> {
 // Should we use something like #[cfg(feature = "single_threaded")] to let the
 // user choose the more efficient alternative?
 pub type DroppedConnections = Arc<Mutex<RefCell<Vec<ConnectionId>>>>;
+
+#[derive(Debug)]
 pub struct ConnectionToken {
     connected_to: ConnectionId,
     drop_list: DroppedConnections,
@@ -333,6 +348,10 @@ impl ConnectionToken {
         drop_list: DroppedConnections,
     ) -> Self {
         Self{connected_to, drop_list}
+    }
+
+    pub fn connected_to(&self) -> ConnectionId {
+        self.connected_to
     }
 }
 
