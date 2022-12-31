@@ -27,7 +27,7 @@ pub enum Side {
 #[cfg_attr(feature = "persistence", derive(Serialize, Deserialize))]
 pub struct VerticalPort<DataType> {
     /// Name of the port. This will be displayed next to the port icon.
-    pub name: String,
+    pub label: String,
     /// The data type of this node. Used to determine incoming connections. This
     /// should always match the type of the InputParamValue, but the property is
     /// not actually enforced.
@@ -41,19 +41,108 @@ pub struct VerticalPort<DataType> {
     hooks: SlotMap<HookId, Option<ConnectionToken>>,
     /// The next hook that's available for a connection
     available_hook: Option<HookId>,
-    /// When true, the node is shown inline inside the node graph.
-    #[cfg_attr(feature = "persistence", serde(default = "shown_inline_default"))]
-    pub shown_inline: bool,
+}
+
+pub struct VerticalOutputPort<DataType: DataTypeTrait> {
+    pub base: VerticalPort<DataType>,
+}
+
+impl<DataType: DataTypeTrait> VerticalOutputPort<DataType> {
+    pub fn new(
+        label: String,
+        data_type: DataType,
+        connection_limit: Option<usize>,
+    ) -> Self {
+        let mut result = Self {
+            base: VerticalPort {
+                label,
+                data_type,
+                connection_limit,
+                side: Side::Right,
+                hooks: SlotMap::with_key(),
+                available_hook: None
+            }
+        };
+        result.base.consider_new_available_hook();
+        result
+    }
+
+    pub fn iter_hooks(&self) -> impl Iterator<Item=(HookId, Option<ConnectionId>)> + '_ {
+        self.base.iter_hooks()
+    }
 }
 
 pub struct VerticalInputPort<DataType: DataTypeTrait> {
     /// The input kind. See [`InputKind`]
     pub kind: InputKind,
     pub default_value: Option<DataType::Value>,
-    pub port: VerticalPort<DataType>,
+    pub base: VerticalPort<DataType>,
+}
+
+impl<DataType: DataTypeTrait> VerticalInputPort<DataType> {
+    pub fn new(
+        label: String,
+        data_type: DataType,
+        connection_limit: Option<usize>,
+        kind: InputKind,
+    ) -> Self {
+        let mut result = Self {
+            kind,
+            default_value: None,
+            base: VerticalPort {
+                label,
+                data_type,
+                connection_limit,
+                side: Side::Left,
+                hooks: SlotMap::with_key(),
+                available_hook: None
+            }
+        };
+        result.base.consider_new_available_hook();
+        result
+    }
+
+    pub fn with_default_value(mut self, default_value: DataType::Value) -> Self {
+        self.default_value = Some(default_value);
+        self
+    }
+
+    pub fn iter_hooks(&self) -> impl Iterator<Item=(HookId, Option<ConnectionId>)> + '_ {
+        self.base.iter_hooks()
+    }
+
+    pub fn using_default_value(&self) -> Option<DataType::Value> {
+        match self.kind {
+            InputKind::ConnectionOnly => {
+                None
+            }
+            InputKind::ConnectionOrConstant => {
+                if self.base.hooks.is_empty() {
+                    self.default_value.clone()
+                } else {
+                    None
+                }
+            }
+            InputKind::ConstantOnly => {
+                self.default_value.clone()
+            }
+        }
+    }
 }
 
 impl<DataType: DataTypeTrait> VerticalPort<DataType> {
+
+    pub fn iter_hooks(&self) -> impl Iterator<Item=(HookId, Option<ConnectionId>)> + '_ {
+        self.hooks.iter().map(|(id, token)| (id, token.as_ref().map(|t| t.connected_to())))
+    }
+
+    fn tangent(&self) -> egui::Vec2 {
+        match self.side {
+            Side::Left => egui::vec2(-1.0, 0.0),
+            Side::Right => egui::vec2(1.0, 0.0),
+        }
+    }
+
     pub fn show_impl(
         &mut self,
         ui: &mut egui::Ui,
@@ -61,13 +150,12 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
         state: &mut EditorUiState<DataType>,
         context: &dyn GraphStyleTrait<DataType=DataType>,
         show_value: Option<&mut DataType::Value>,
-        tangent_vec: egui::Vec2,
     ) -> (egui::Rect, Vec<PortResponse<DataType>>) {
         let mut value_rect_opt = None;
         let mut value_responses = Vec::<<DataType::Value as ValueTrait>::Response>::default();
         let label_rect = ui.horizontal(|ui| {
             ui.add_space(15.0);
-            ui.label(&self.name);
+            ui.label(&self.label);
             if let Some(value) = show_value {
                 if self.hooks.len() == 0 || (self.hooks.len() == 1 && self.available_hook.is_some()) {
                     // There are no connections to this port, so we should show
@@ -376,7 +464,7 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
             let color = hook_color_map.get(&hook_id).unwrap_or(&default_hook_color);
             let p = egui::pos2(hook_x, next_hook_y);
             ui.painter().circle(p, radius, *color, (0_f32, *color));
-            state.hook_geometry.insert(ConnectionId(id.0, id.1, hook_id), (p, tangent_vec));
+            state.hook_geometry.insert(ConnectionId(id.0, id.1, hook_id), (p, self.tangent()));
             next_hook_y += hook_spacing + 2.0*radius;
         }
 
@@ -385,7 +473,7 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
         return (row_rect.union(port_rect), responses);
     }
 
-    fn consider_new_available_hook(&mut self) {
+    pub fn consider_new_available_hook(&mut self) {
         if self.available_hook.is_none() {
             if !(self.connection_limit <= Some(self.hooks.len())) {
                 self.available_hook = Some(self.hooks.insert(None));
@@ -404,7 +492,7 @@ impl<DataType: DataTypeTrait> PortTrait for VerticalPort<DataType> {
         state: &mut EditorUiState<Self::DataType>,
         style: &dyn GraphStyleTrait<DataType=Self::DataType>,
     ) -> (egui::Rect, Vec<PortResponse<DataType>>) {
-        self.show_impl(ui, id, state, style, None, egui::vec2(1.0, 0.0))
+        self.show_impl(ui, id, state, style, None)
     }
 
     fn data_type(&self) -> Self::DataType {
@@ -472,10 +560,10 @@ impl<DataType: DataTypeTrait> PortTrait for VerticalInputPort<DataType> {
     ) -> (egui::Rect, Vec<PortResponse<DataType>>) {
         match self.kind {
             InputKind::ConnectionOnly => {
-                self.port.show_impl(ui, id, state, style, None, egui::vec2(-1.0, 0.0))
+                self.base.show_impl(ui, id, state, style, None)
             },
             InputKind::ConstantOnly => {
-                let label_rect = ui.label(&self.port.name).rect;
+                let label_rect = ui.label(&self.base.label).rect;
                 if let Some(default_value) = &mut self.default_value {
                     let (value_rect, value_resp) = default_value.show(ui);
                     (
@@ -487,28 +575,62 @@ impl<DataType: DataTypeTrait> PortTrait for VerticalInputPort<DataType> {
                 }
             },
             InputKind::ConnectionOrConstant => {
-                self.port.show_impl(ui, id, state, style, self.default_value.as_mut(), egui::vec2(-1.0, 0.0))
+                self.base.show_impl(ui, id, state, style, self.default_value.as_mut())
             }
         }
     }
 
     fn data_type(&self) -> Self::DataType {
-        self.port.data_type.clone()
+        self.base.data_type.clone()
     }
 
     fn available_hook(&self) -> Option<HookId> {
-        self.port.available_hook
+        self.base.available_hook
     }
 
     fn connect(&mut self, from: HookId, to: graph::ConnectionToken) -> Result<(), PortAddConnectionError> {
-        self.port.connect(from, to)
+        self.base.connect(from, to)
     }
 
     fn drop_all_connections(&mut self) -> Vec<(HookId, ConnectionId)> {
-        self.port.drop_all_connections()
+        self.base.drop_all_connections()
     }
 
     fn drop_connection(&mut self, id: HookId) -> Result<ConnectionId, PortDropConnectionError> {
-        self.port.drop_connection(id)
+        self.base.drop_connection(id)
+    }
+}
+
+impl<DataType: DataTypeTrait> PortTrait for VerticalOutputPort<DataType> {
+    type DataType = DataType;
+
+    fn show(
+        &mut self,
+        ui: &mut egui::Ui,
+        id: (NodeId, PortId),
+        state: &mut EditorUiState<Self::DataType>,
+        style: &dyn GraphStyleTrait<DataType=Self::DataType>,
+    ) -> (egui::Rect, Vec<PortResponse<Self::DataType>>) {
+        self.base.show(ui, id, state, style)
+    }
+
+    fn available_hook(&self) -> Option<HookId> {
+        self.base.available_hook()
+    }
+
+    fn connect(&mut self, from: HookId, to: graph::ConnectionToken) -> Result<(), PortAddConnectionError> {
+        self.base.connect(from, to)
+    }
+
+    fn data_type(&self) -> Self::DataType {
+        self.base.data_type()
+    }
+
+    fn drop_all_connections(&mut self) -> Vec<(HookId, ConnectionId)> {
+        self.base.drop_all_connections()
+    }
+
+    fn drop_connection(&mut self, id: HookId) -> Result<ConnectionId, PortDropConnectionError> {
+        self.base.drop_connection(id)
     }
 }

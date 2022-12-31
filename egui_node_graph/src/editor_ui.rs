@@ -1,10 +1,7 @@
 use std::collections::{HashSet, HashMap};
 
-use crate::color_hex_utils::*;
-use crate::utils::ColorUtils;
-
 use super::*;
-use egui::epaint::{CubicBezierShape, RectShape};
+use egui::epaint::CubicBezierShape;
 use egui::*;
 
 /// For each hook, this specifies the (location, tangent vector) for any curve
@@ -256,7 +253,8 @@ impl<Context: GraphContextTrait> GraphEditorState<Context> {
                             }
                         }
                         PortResponse::ConnectEventEnded { output, input } => {
-                            self.graph.add_connection(*output, *input);
+                            // TODO(MXG): Report errors for this?
+                            self.graph.add_connection(*output, *input).ok();
                         }
                         PortResponse::Value(_) => {
                             // User-defined response type
@@ -275,7 +273,8 @@ impl<Context: GraphContextTrait> GraphEditorState<Context> {
                     }
                 }
                 NodeResponse::DisconnectEvent { input, .. } => {
-                    self.graph.drop_connection(input.clone().into());
+                    // TOOD(MXG): Report errors for this?
+                    self.graph.drop_connection(input.clone().into()).ok();
                 }
                 NodeResponse::DeleteNodeUi(node_id) => {
                     if let Some((node, disc_events)) = self.graph.remove_node(*node_id) {

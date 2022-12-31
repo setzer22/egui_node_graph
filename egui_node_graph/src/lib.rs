@@ -30,7 +30,7 @@ pub mod editor_ui;
 pub use editor_ui::*;
 
 pub mod vertical_port;
-pub use vertical_port::{VerticalPort, VerticalInputPort};
+pub use vertical_port::*;
 
 pub mod column_node;
 pub use column_node::*;

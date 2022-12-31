@@ -139,14 +139,14 @@ impl<Node: NodeTrait> Graph<Node> {
 
             // Also Note: The connection tokens intentionally contain the id of the
             // complementary ConnectionId
-            let token_for_output_hook = ConnectionToken{
-                connected_to: input_id.into(),
-                drop_list: self.dropped_connections.clone()
-            };
-            let token_for_input_hook = ConnectionToken{
-                connected_to: output_id.into(),
-                drop_list: self.dropped_connections.clone()
-            };
+            let token_for_output_hook = ConnectionToken::new(
+                input_id.into(),
+                self.dropped_connections.clone(),
+            );
+            let token_for_input_hook = ConnectionToken::new(
+                output_id.into(),
+                self.dropped_connections.clone(),
+            );
 
             // 1. Tell the output node about the connection
             // 2. If the output node connected successfully, tell the input node
@@ -257,7 +257,7 @@ impl<Node: NodeTrait> Graph<Node> {
                 |node| {
                     node.drop_connection(complement.into())
                 }
-            );
+            ).ok();
         }
 
         // Clear both buffers.

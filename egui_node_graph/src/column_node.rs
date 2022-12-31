@@ -3,12 +3,15 @@ use crate::utils::ColorUtils;
 use egui::*;
 use epaint::RectShape;
 
+pub type SimpleColumnNode<Content, DataType> =
+    ColumnNode<Content, VerticalInputPort<DataType>, VerticalOutputPort<DataType>>;
+
 /// A node inside the [`Graph`]. Nodes have input and output parameters, stored
 /// as ids. They also contain a custom `NodeData` struct with whatever data the
 /// user wants to store per-node.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "persistence", derive(Serialize, Deserialize))]
-pub struct ColumnNode<Content, DataType, InputPort, OutputPort> {
+pub struct ColumnNode<Content, InputPort, OutputPort> {
     pub position: Pos2,
     pub label: String,
     pub content: Content,
@@ -23,22 +26,43 @@ pub struct ColumnNode<Content, DataType, InputPort, OutputPort> {
     /// node's frame changes then the node size should be fixed after one bad
     /// rendering cycle.
     pub size_hint: f32,
-
-    _ignore: std::marker::PhantomData<DataType>,
 }
 
-pub type SimpleColumnNode<Content, DataType> =
-    ColumnNode<Content, DataType, VerticalInputPort<DataType>, VerticalPort<DataType>>;
+impl<Content, InputPort, OutputPort> ColumnNode<Content, InputPort, OutputPort> {
+    pub fn new(position: Pos2, label: String, content: Content) -> Self {
+        Self {
+            position,
+            label,
+            content,
+            inputs: SlotMap::with_key(),
+            outputs: SlotMap::with_key(),
+            size_hint: 80.0,
+        }
+    }
 
-impl<Content, DataType, InputPort, OutputPort> NodeTrait for ColumnNode<Content, DataType, InputPort, OutputPort>
+    pub fn with_input(mut self, input: InputPort) -> Self {
+        self.inputs.insert(input);
+        self
+    }
+
+    pub fn with_output(mut self, output: OutputPort) -> Self {
+        self.outputs.insert(output);
+        self
+    }
+
+    pub fn with_size_hint(mut self, size_hint: f32) -> Self {
+        self.size_hint = size_hint;
+        self
+    }
+}
+
+impl<Content, InputPort, OutputPort> NodeTrait for ColumnNode<Content, InputPort, OutputPort>
 where
     Content: NodeContentTrait,
-    DataType: DataTypeTrait,
-    DataType::Value: ValueTrait,
-    InputPort: PortTrait<DataType=DataType>,
-    OutputPort: PortTrait<DataType=DataType>,
+    InputPort: PortTrait,
+    OutputPort: PortTrait<DataType=InputPort::DataType>,
 {
-    type DataType = DataType;
+    type DataType = InputPort::DataType;
     type Content = Content;
 
     fn show(
@@ -47,7 +71,7 @@ where
         app: &<Self::Content as NodeContentTrait>::AppState,
         node_id: NodeId,
         state: &mut EditorUiState<Self::DataType>,
-        style: &dyn GraphStyleTrait<DataType=DataType>,
+        style: &dyn GraphStyleTrait<DataType=Self::DataType>,
     ) -> Vec<NodeResponse<Self>> {
         let mut ui = parent_ui.child_ui_with_id_source(
             Rect::from_min_size(self.position + state.pan, [self.size_hint, 0.0].into()),
@@ -97,7 +121,7 @@ where
 
             for (input_id, port) in &mut self.inputs {
                 ui.horizontal(|ui| {
-                    let (rect, port_responses): (egui::Rect, Vec<PortResponse<DataType>>) = port.show(
+                    let (rect, port_responses): (egui::Rect, Vec<PortResponse<Self::DataType>>) = port.show(
                         ui, (node_id, PortId::Input(input_id)), state, style
                     );
                     responses.extend(port_responses.into_iter().map(NodeResponse::Port));
@@ -107,7 +131,7 @@ where
 
             for (output_id, port) in &mut self.outputs {
                 ui.with_layout(egui::Layout::right_to_left(), |ui| {
-                    let (rect, port_responses): (egui::Rect, Vec<PortResponse<DataType>>) = port.show(
+                    let (rect, port_responses): (egui::Rect, Vec<PortResponse<Self::DataType>>) = port.show(
                         ui, (node_id, PortId::Output(output_id)), state, style
                     );
                     responses.extend(port_responses.into_iter().map(NodeResponse::Port));

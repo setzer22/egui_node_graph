@@ -218,7 +218,7 @@ pub trait GraphStyleTrait {
     fn recommend_node_background_color(
         &self,
         ui: &egui::Ui,
-        node_id: NodeId,
+        _node_id: NodeId,
     ) -> egui::Color32 {
         if ui.visuals().dark_mode {
             color_from_hex("#3f3f3f").unwrap()
