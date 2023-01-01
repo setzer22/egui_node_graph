@@ -248,16 +248,15 @@ impl<Node: NodeTrait> Graph<Node> {
         }
 
         for (complement, original) in complements {
-            self.drop_connection(complement).ok();
-            if let Some(connection) = self.connections.remove(&complement) {
-                assert!(original == connection);
-            }
             self.node_mut(
-                complement.node(),
+                original.node(),
                 |node| {
-                    node.drop_connection(complement.into())
+                    node.drop_connection(original.into())
                 }
             ).ok();
+            if let Some(connection) = self.connections.remove(&complement) {
+                assert!(complement == connection);
+            }
         }
 
         // Clear both buffers.

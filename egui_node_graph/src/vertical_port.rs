@@ -16,7 +16,7 @@ pub enum InputKind {
     ConnectionOrConstant,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Side {
     Left,
     Right,
@@ -151,10 +151,11 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
         context: &dyn GraphStyleTrait<DataType=DataType>,
         show_value: Option<&mut DataType::Value>,
     ) -> (egui::Rect, Vec<PortResponse<DataType>>) {
+        let (outer_left, outer_right) = (ui.min_rect().left(), ui.min_rect().right());
         let mut value_rect_opt = None;
         let mut value_responses = Vec::<<DataType::Value as ValueTrait>::Response>::default();
         let label_rect = ui.horizontal(|ui| {
-            ui.add_space(15.0);
+            ui.add_space(20.0);
             ui.label(&self.label);
             if let Some(value) = show_value {
                 if self.hooks.len() == 0 || (self.hooks.len() == 1 && self.available_hook.is_some()) {
@@ -174,10 +175,13 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
         };
 
         let (hook_x, port_edge_dx) = {
-            if ui.layout().horizontal_align() == egui::Align::RIGHT {
-                (row_rect.right(), -10.0)
-            } else {
-                (row_rect.left(), 10.0)
+            match self.side {
+                Side::Right => {
+                    (outer_right - 6.0, -10.0)
+                }
+                Side::Left => {
+                    (outer_left + 6.0, 10.0)
+                }
             }
         };
 
@@ -205,10 +209,10 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
         let top_hook_y = {
             if height_for_hooks >= label_rect.height() {
                 // The top hook needs to be as high in the port as possible
-                label_rect.min.y + edge_width + hook_spacing + radius
+                label_rect.y_range().start() + edge_width + hook_spacing + radius
             } else {
                 // The hooks should be centered in the port
-                height_for_hooks/2.0 - edge_width - hook_spacing
+                (label_rect.y_range().start() + label_rect.y_range().end())/2.0 - height_for_hooks/2.0 + edge_width + hook_spacing + radius
             }
         };
 
@@ -217,6 +221,32 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
             // utility function that can be used by different types of ports.
             // That function would probably want to take in a port_rect and a
             // hook_rect_iterator argument.
+
+            // NOTE: We must allocate the hook rectangles before allocating the
+            // full port rectangles so that egui gives priority to the hooks
+            // over the port. For some reason the UI prioritizes sensing for
+            // the rectangles that are allocated sooner.
+            let hook_selected: Option<(HookId, egui::Response)> = {
+                let mut next_hook_y = top_hook_y;
+                self.hooks.iter().find_map(|(hook_id, _)| {
+                    let hook_y = next_hook_y;
+                    next_hook_y += hook_spacing + 2.0*radius;
+                    let resp = ui.allocate_rect(
+                        egui::Rect::from_center_size(
+                            egui::pos2(hook_x, hook_y),
+                            egui::vec2(2.0*radius, 2.0*radius),
+                        ),
+                        egui::Sense::click_and_drag(),
+                    );
+
+                    if resp.hovered() || resp.drag_released() || resp.drag_started() {
+                        Some((hook_id, resp))
+                    } else {
+                        None
+                    }
+                })
+            };
+
             let ui_port_response = ui.allocate_rect(port_rect, egui::Sense::click_and_drag());
             if let Some((dragged_connection, dragged_data_type)) = &state.ongoing_drag {
                 let dragged_port: (NodeId, PortId) = dragged_connection.clone().into();
@@ -233,9 +263,9 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
                         *dragged_connection,
                     );
                     if let Some(connection_possible) = connection_possible {
-                        if dragged_data_type.is_compatible(&self.data_type) {
-                            if ui_port_response.hovered() || ui_port_response.drag_released() {
-                                let resp = if ui_port_response.drag_released() {
+                        if dragged_data_type.is_compatible(&self.data_type) && dragged_port.0 != id.0 {
+                            if ui_port_response.hovered() {
+                                let resp = if ui.input().pointer.any_released() {
                                     Some(connection_possible)
                                 } else {
                                     None
@@ -270,31 +300,18 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
                 );
             }
 
-            let hook_selected: Option<(HookId, egui::Response)> = {
-                let mut next_hook_y = top_hook_y;
-                self.hooks.iter().find_map(|(hook_id, _)| {
-                    let hook_y = next_hook_y;
-                    next_hook_y += hook_spacing + 2.0*radius;
-                    let resp = ui.allocate_rect(
-                        egui::Rect::from_center_size(
-                            egui::pos2(hook_x, hook_y),
-                            egui::vec2(2.0*radius, 2.0*radius),
-                        ),
-                        egui::Sense::click_and_drag(),
-                    );
-
-                    if resp.hovered() || resp.drag_released() || resp.drag_started() {
-                        Some((hook_id, resp))
-                    } else {
-                        None
-                    }
-                })
-            };
-
             if let Some((hook_selected, hook_resp)) = hook_selected {
                 if self.available_hook.filter(|h| *h == hook_selected).is_some() {
-                    // The user is interacting with the available hook, so we
-                    // should treat it as possibly creating a connection
+                    if hook_resp.drag_started() {
+                        let accept_color = context.recommend_port_accept_color(ui, id);
+                        break 'port (
+                            accept_color,
+                            context.recommend_data_type_color(&self.data_type),
+                            HashMap::from_iter([(hook_selected, accept_color)]),
+                            Some(PortResponse::ConnectEventStarted(ConnectionId(id.0, id.1, hook_selected))),
+                        );
+                    }
+
                     if hook_resp.hovered() {
                         // The user is hovering over the available hook. Show
                         // the user that we see the hovering.
@@ -306,31 +323,9 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
                             None,
                         );
                     }
-
-                    if hook_resp.drag_started() {
-                        let accept_color = context.recommend_port_accept_color(ui, id);
-                        break 'port (
-                            accept_color,
-                            context.recommend_data_type_color(&self.data_type),
-                            HashMap::from_iter([(hook_selected, accept_color)]),
-                            Some(PortResponse::ConnectEventStarted(ConnectionId(id.0, id.1, hook_selected))),
-                        );
-                    }
                 } else {
                     // The user is interacting with a hook that is part of a
                     // connection
-                    if hook_resp.hovered() {
-                        // Hovering over a connected hook. Show the user that we
-                        // see the hovering.
-                        let hover_color = context.recommend_port_hover_color(ui, id);
-                        break 'port (
-                            context.recommend_node_background_color(ui, id.0),
-                            context.recommend_data_type_color(&self.data_type),
-                            HashMap::from_iter([(hook_selected, hover_color)]),
-                            None,
-                        );
-                    }
-
                     if hook_resp.drag_started() {
                         // Dragging from a connected hook. Begin the connection
                         // moving event.
@@ -340,6 +335,18 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
                             accept_color,
                             HashMap::default(),
                             Some(PortResponse::MoveEvent(ConnectionId(id.0, id.1, hook_selected))),
+                        );
+                    }
+
+                    if hook_resp.hovered() {
+                        // Hovering over a connected hook. Show the user that we
+                        // see the hovering.
+                        let hover_color = context.recommend_port_hover_color(ui, id);
+                        break 'port (
+                            context.recommend_node_background_color(ui, id.0),
+                            context.recommend_data_type_color(&self.data_type),
+                            HashMap::from_iter([(hook_selected, hover_color)]),
+                            None,
                         );
                     }
                 }
@@ -475,7 +482,7 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
 
     pub fn consider_new_available_hook(&mut self) {
         if self.available_hook.is_none() {
-            if !(self.connection_limit <= Some(self.hooks.len())) {
+            if self.connection_limit.filter(|limit| *limit <= self.hooks.len()).is_none() {
                 self.available_hook = Some(self.hooks.insert(None));
             }
         }
