@@ -1,6 +1,5 @@
 use super::*;
 use std::collections::HashMap;
-use crate::utils::ColorUtils;
 
 /// The three kinds of input params. These describe how the graph must behave
 /// with respect to inline widgets and connections for this parameter.
@@ -365,12 +364,26 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
                         // see the hovering.
                         let hover_color = context.recommend_port_hover_color(ui, id);
                         break 'port (
-                            context.recommend_node_background_color(ui, id.0),
+                            context.recommend_port_passive_color(ui, id),
                             context.recommend_data_type_color(&self.data_type),
                             HashMap::from_iter([(hook_selected, hover_color)]),
                             None,
                         );
                     }
+                }
+            }
+
+            if ui_port_response.drag_started() {
+                if let Some(available_hook) = self.available_hook {
+                    // The user has started to drag a new connection from the
+                    // port.
+                    let accept_color = context.recommend_port_accept_color(ui, id);
+                    break 'port (
+                        accept_color,
+                        accept_color,
+                        HashMap::default(),
+                        Some(PortResponse::ConnectEventStarted(ConnectionId(id.0, id.1, available_hook))),
+                    );
                 }
             }
 
@@ -398,20 +411,6 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
                 }
             }
 
-            if ui_port_response.drag_started() {
-                if let Some(available_hook) = self.available_hook {
-                    // The user has started to drag a new connection from the
-                    // port.
-                    let accept_color = context.recommend_port_accept_color(ui, id);
-                    break 'port (
-                        accept_color,
-                        accept_color,
-                        HashMap::default(),
-                        Some(PortResponse::ConnectEventStarted(ConnectionId(id.0, id.1, available_hook))),
-                    );
-                }
-            }
-
             if ui_port_response.drag_started() || ui_port_response.dragged() {
                 if self.available_hook.is_none() {
                     // The user is trying to drag on a port that has no available hook
@@ -427,7 +426,7 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
 
             // Nothing special is happening with this port
             (
-                context.recommend_node_background_color(ui, id.0),
+                context.recommend_port_passive_color(ui, id),
                 context.recommend_data_type_color(&self.data_type),
                 HashMap::default(),
                 None,
@@ -436,53 +435,6 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
 
         let node_color = context.recommend_node_background_color(ui, id.0);
         ui.painter().rect(port_rect, egui::Rounding::default(), port_color, (0_f32, node_color));
-        let dark_stroke = (edge_width/2.0, node_color.lighten(0.8));
-        let light_stroke = (edge_width/2.0, node_color.lighten(1.2));
-
-        ui.painter().line_segment(
-            [
-                egui::pos2(hook_x, port_rect.top()),
-                egui::pos2(hook_x + port_edge_dx, port_rect.top()),
-            ], dark_stroke
-        );
-        ui.painter().line_segment(
-            [
-                egui::pos2(hook_x, port_rect.bottom() + edge_width/2.0),
-                egui::pos2(hook_x + port_edge_dx, port_rect.bottom() + edge_width/2.0),
-            ], dark_stroke
-        );
-
-        ui.painter().line_segment(
-            [
-                egui::pos2(hook_x, port_rect.top() + edge_width/2.0),
-                egui::pos2(hook_x + port_edge_dx, port_rect.top() + edge_width/2.0),
-            ], light_stroke
-        );
-        ui.painter().line_segment(
-            [
-                egui::pos2(hook_x, port_rect.bottom()),
-                egui::pos2(hook_x + port_edge_dx, port_rect.bottom()),
-            ], light_stroke
-        );
-
-        let (outer_stroke, inner_stroke, half_edge_dx) = if port_edge_dx > 0.0 {
-            (light_stroke, dark_stroke, -edge_width/2.0)
-        } else {
-            (dark_stroke, light_stroke, edge_width/2.0)
-        };
-
-        ui.painter().line_segment(
-            [
-                egui::pos2(hook_x + port_edge_dx, port_rect.top()),
-                egui::pos2(hook_x + port_edge_dx, port_rect.bottom()),
-            ], outer_stroke,
-        );
-        ui.painter().line_segment(
-            [
-                egui::pos2(hook_x + port_edge_dx + half_edge_dx, port_rect.top() - edge_width/2.0),
-                egui::pos2(hook_x + port_edge_dx + half_edge_dx, port_rect.bottom() + edge_width/2.0),
-            ], inner_stroke
-        );
 
         // Now draw the hooks and save their locations
         let mut next_hook_y = top_hook_y;

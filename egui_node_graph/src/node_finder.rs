@@ -6,8 +6,7 @@ use egui::*;
 #[cfg_attr(feature = "persistence", derive(serde::Serialize, serde::Deserialize))]
 pub struct NodeFinder {
     pub query: String,
-    /// Reset every frame. When set, the node finder will be moved at that position
-    pub position: Option<Pos2>,
+    pub position: Pos2,
     pub just_spawned: bool,
 }
 
@@ -15,7 +14,7 @@ impl NodeFinder {
     pub fn new_at(pos: Pos2) -> Self {
         NodeFinder {
             query: "".into(),
-            position: Some(pos),
+            position: pos,
             just_spawned: true,
         }
     }

@@ -1,5 +1,5 @@
 use super::*;
-use crate::color_hex_utils::color_from_hex;
+use crate::{color_hex_utils::color_from_hex, utils::ColorUtils};
 
 /// This trait must be implemented by the `ValueType` generic parameter of the
 /// [`Graph`]. The trait allows drawing custom inline widgets for the different
@@ -238,6 +238,14 @@ pub trait GraphStyleTrait {
         } else {
             color_from_hex("#505050").unwrap()
         }
+    }
+
+    fn recommend_port_passive_color(
+        &self,
+        ui: &egui::Ui,
+        (node_id, _port): (NodeId, PortId),
+    ) -> egui::Color32 {
+        self.recommend_node_background_color(ui, node_id).lighten(0.75)
     }
 
     /// Ports may choose to be highlighted with this color when a connection

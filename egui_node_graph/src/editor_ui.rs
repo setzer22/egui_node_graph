@@ -174,13 +174,11 @@ impl<Context: GraphContextTrait> GraphEditorState<Context> {
         let mut should_close_node_finder = false;
         if let Some(ref mut node_finder) = self.node_finder {
             let mut node_finder_area = Area::new("node_finder").order(Order::Foreground);
-            if let Some(pos) = node_finder.position {
-                node_finder_area = node_finder_area.current_pos(pos);
-            }
+            node_finder_area = node_finder_area.current_pos(node_finder.position);
             node_finder_area.show(ui.ctx(), |ui| {
                 if let Some(node_kind) = node_finder.show(ui, all_kinds) {
                     let new_node = self.graph.add_node(
-                        node_kind.build_node(cursor_pos - state.pan, app_state),
+                        node_kind.build_node(node_finder.position - state.pan, app_state),
                     );
 
                     self.node_order.push(new_node);
