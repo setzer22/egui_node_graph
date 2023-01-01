@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-use slotmap::{SecondaryMap, SlotMap};
+use slotmap::SlotMap;
 
 pub type SVec<T> = smallvec::SmallVec<[T; 4]>;
 
@@ -11,10 +11,6 @@ pub use graph::*;
 /// Type declarations for the different id types (node, input, output)
 pub mod id_type;
 pub use id_type::*;
-
-/// Implements the index trait for the Graph type, allowing indexing by all
-/// three id types
-pub mod index_impls;
 
 /// The main struct in the library, contains all the necessary state to draw the
 /// UI graph

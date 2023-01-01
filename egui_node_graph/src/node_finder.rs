@@ -1,5 +1,5 @@
 
-use crate::{color_hex_utils::*, NodeTemplateIter, NodeTemplateTrait, NodeTrait};
+use crate::{color_hex_utils::*, NodeTemplateIter, NodeTemplateTrait};
 
 use egui::*;
 
