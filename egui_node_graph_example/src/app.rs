@@ -587,23 +587,28 @@ pub fn evaluate(
     while !ranking_queue.is_empty() {
         let mut next_queue = HashMap::<NodeId, NodeInput>::new();
         next_queue.reserve(ranking_queue.len());
-        let original_queue_size = ranking_queue.len();
-        let mut entries_added = false;
+        let mut previous_queue = HashSet::<NodeId>::new();
+        for (node_id, _) in &ranking_queue {
+            previous_queue.insert(*node_id);
+        }
 
         for (node_id, node_input) in ranking_queue {
             if let Some(rank) = node_input.find_rank(&evaluatees) {
                 evaluatees.insert(node_id, (rank, node_input));
             } else {
                 for dep in node_input.dependencies() {
-                    entries_added = true;
-                    next_queue.insert(dep.node(), NodeInput::new(dep.node(), graph));
+                    if !previous_queue.contains(&dep.node()) && !evaluatees.contains_key(&dep.node()) {
+                        next_queue.insert(dep.node(), NodeInput::new(dep.node(), graph));
+                    }
                 }
                 next_queue.insert(node_id, node_input);
             }
         }
 
-        if original_queue_size == next_queue.len() && !entries_added {
-            anyhow::bail!("circular dependency!");
+        if previous_queue.iter().find(|id| !next_queue.contains_key(*id)).is_none() {
+            if next_queue.iter().find(|(id, _)| !previous_queue.contains(*id)).is_none() {
+                anyhow::bail!("circular dependency!");
+            }
         }
 
         ranking_queue = next_queue;
