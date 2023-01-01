@@ -121,7 +121,9 @@ impl<DataType: DataTypeTrait> VerticalInputPort<DataType> {
                 None
             }
             InputKind::ConnectionOrConstant => {
-                if self.base.hooks.is_empty() {
+                if self.base.hooks.iter().find(|(_, c)| c.is_some()).is_none() {
+                    // None of the hooks have a connection, so we will fall back
+                    // on the default value.
                     self.default_value.clone()
                 } else {
                     None
@@ -242,7 +244,7 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
                         egui::Sense::click_and_drag(),
                     );
 
-                    if resp.hovered() || resp.drag_released() || resp.drag_started() {
+                    if ui.input().pointer.hover_pos().filter(|p| resp.rect.contains(*p)).is_some() {
                         Some((*hook_id, resp))
                     } else {
                         None
@@ -260,6 +262,16 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
                     break 'port (accept_color, accept_color, HashMap::default(), None);
                 }
 
+                let hovering_on_port = ui.input().pointer.hover_pos().filter(|p| {
+                    if port_rect.contains(*p) {
+                        true
+                    } else if let Some((_, hook_resp)) = hook_selected {
+                        hook_resp.rect.contains(*p)
+                    } else {
+                        false
+                    }
+                }).is_some();
+
                 if let Some(available_hook) = self.available_hook {
                     let connection_possible = PortResponse::connect_event_ended(
                         ConnectionId(id.0, id.1, available_hook),
@@ -267,7 +279,8 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
                     );
                     if let Some(connection_possible) = connection_possible {
                         if dragged_data_type.is_compatible(&self.data_type) && dragged_port.0 != id.0 {
-                            if ui_port_response.hovered() {
+                            // Check if the cursor is hovering on this port or one of its hooks
+                            if hovering_on_port {
                                 let resp = if ui.input().pointer.any_released() {
                                     Some(connection_possible)
                                 } else {
@@ -275,15 +288,15 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
                                 };
 
                                 let accept_color = context.recommend_port_accept_color(ui, id);
-
                                 // The port can accept or has accepted the connection
                                 break 'port (accept_color, accept_color, HashMap::default(), resp);
                             }
 
+                            let compatible_color = context.recommend_compatible_port_color(ui, id);
                             // The connection is compatible but the user needs to
                             // drag it over to the port
                             break 'port (
-                                context.recommend_compatible_port_color(ui, id),
+                                compatible_color,
                                 context.recommend_data_type_color(&self.data_type.clone().into()),
                                 HashMap::default(),
                                 None,
@@ -295,8 +308,14 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
                 // A connection is not possible, either because all the hooks
                 // are filled or because the data type that's being dragged
                 // is incompatible
+                let port_color = if hovering_on_port {
+                    context.recommend_port_reject_color(ui, id)
+                } else {
+                    context.recommend_incompatible_port_color(ui, id)
+                };
+
                 break 'port (
-                    context.recommend_incompatible_port_color(ui, id),
+                    port_color,
                     context.recommend_data_type_color(&self.data_type.clone().into()),
                     HashMap::default(),
                     None,

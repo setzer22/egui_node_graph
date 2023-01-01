@@ -1,4 +1,4 @@
-use std::{borrow::Cow, collections::HashMap};
+use std::{borrow::Cow, collections::{HashMap, HashSet}};
 
 use eframe::egui::{self, DragValue, TextStyle};
 use egui_node_graph::*;
@@ -150,9 +150,9 @@ impl NodeTemplateTrait for MyNodeTemplate {
     fn build_node(
         &self,
         position: egui::Pos2,
-        app_state: &mut MyAppState,
+        _app_state: &mut MyAppState,
     ) -> Self::Node {
-        let mut node = MyNode::new(position, self.node_graph_label(), MyNodeContent::new(*self));
+        let node = MyNode::new(position, self.node_graph_label(), MyNodeContent::new(*self));
         match self {
             MyNodeTemplate::AddScalar => {
                 node
@@ -400,19 +400,19 @@ impl eframe::App for NodeGraphExample {
     }
 }
 
-type OutputsCache = HashMap<OutputId, MyValueType>;
-
 pub fn evaluate(
     graph: &MyGraph,
     node_id: NodeId,
 ) -> anyhow::Result<MyValueType> {
+
+    #[derive(Debug)]
     enum InputType {
-        Connections(Vec<InputId>),
+        Connections(Vec<OutputId>),
         Constant(MyValueType),
     }
 
     impl InputType {
-        fn dependencies(&self) -> Vec<InputId> {
+        fn dependencies(&self) -> Vec<OutputId> {
             match self {
                 InputType::Connections(v) => v.clone(),
                 InputType::Constant(_) => vec![],
@@ -422,7 +422,7 @@ pub fn evaluate(
         fn values(&self, evaluations: &HashMap<(NodeId, PortId), MyValueType>) -> Vec<MyValueType> {
             match self {
                 InputType::Connections(inputs) => {
-                    inputs.iter().map(|InputId(node, port, _)| {
+                    inputs.iter().map(|OutputId(node, port, _)| {
                         evaluations.get(&(*node, (*port).into())).unwrap().clone()
                     }).collect()
                 }
@@ -439,6 +439,7 @@ pub fn evaluate(
         }
     }
 
+    #[derive(Debug)]
     enum NodeInput {
         AddScalar(InputType),
         AddVector(InputType),
@@ -462,36 +463,9 @@ pub fn evaluate(
     }
 
     impl NodeInput {
-        fn dependencies(&self) -> Vec<InputId> {
-            match self {
-                NodeInput::AddScalar(v) => v.dependencies(),
-                NodeInput::AddVector(v) => v.dependencies(),
-                NodeInput::MakeScalar(v) => v.dependencies(),
-                NodeInput::MakeVector { x, y } => x.dependencies().iter().cloned().chain(y.dependencies().iter().cloned()).collect(),
-                NodeInput::SubtractScalar { value, minus } => value.dependencies().iter().cloned().chain(minus.dependencies().iter().cloned()).collect(),
-                NodeInput::SubtractVector { value, minus } => value.dependencies().iter().cloned().chain(minus.dependencies().iter().cloned()).collect(),
-                NodeInput::VectorTimesScalar { scalar, vec } => scalar.dependencies().iter().cloned().chain(vec.dependencies().iter().cloned()).collect(),
-            }
-        }
-    }
-
-    struct Evaluatee {
-        node_id: NodeId,
-        input: NodeInput,
-    }
-
-    fn collect_inputs(port: &VerticalInputPort<MyDataType>) -> InputType {
-        if let Some(constant) = port.using_default_value() {
-            InputType::Constant(constant)
-        } else {
-            InputType::Connections(port.iter_hooks().filter_map(|(_, c)| c.map(|c| c.as_input()).flatten()).collect())
-        }
-    }
-
-    impl Evaluatee {
-        fn new(node_id: NodeId, graph: &MyGraph) -> Evaluatee {
+        fn new(node_id: NodeId, graph: &MyGraph) -> Self {
             let node = graph.node(node_id).unwrap();
-            let input = match &node.content.template {
+            match &node.content.template {
                 MyNodeTemplate::AddScalar => {
                     NodeInput::AddScalar(collect_inputs(node.inputs.iter().next().unwrap().1))
                 }
@@ -525,13 +499,12 @@ pub fn evaluate(
                         vec: collect_inputs(node.inputs.iter().find(|p| p.1.base.label == "vec").unwrap().1),
                     }
                 }
-            };
-            Evaluatee { node_id, input }
+            }
         }
 
-        fn find_rank(&self, evaluatees: &HashMap<NodeId, (usize, Evaluatee)>) -> Option<usize> {
+        fn find_rank(&self, evaluatees: &HashMap<NodeId, (usize, NodeInput)>) -> Option<usize> {
             let mut rank = 0;
-            for dep in self.input.dependencies() {
+            for dep in self.dependencies() {
                 if let Some((dep_rank, _)) = evaluatees.get(&dep.node()) {
                     // The rank of this node is the highest rank of its
                     // dependencies, plus one.
@@ -546,8 +519,20 @@ pub fn evaluate(
             Some(rank)
         }
 
+        fn dependencies(&self) -> Vec<OutputId> {
+            match self {
+                NodeInput::AddScalar(v) => v.dependencies(),
+                NodeInput::AddVector(v) => v.dependencies(),
+                NodeInput::MakeScalar(v) => v.dependencies(),
+                NodeInput::MakeVector { x, y } => x.dependencies().iter().cloned().chain(y.dependencies().iter().cloned()).collect(),
+                NodeInput::SubtractScalar { value, minus } => value.dependencies().iter().cloned().chain(minus.dependencies().iter().cloned()).collect(),
+                NodeInput::SubtractVector { value, minus } => value.dependencies().iter().cloned().chain(minus.dependencies().iter().cloned()).collect(),
+                NodeInput::VectorTimesScalar { scalar, vec } => scalar.dependencies().iter().cloned().chain(vec.dependencies().iter().cloned()).collect(),
+            }
+        }
+
         fn evaluate(&self, evaluations: &HashMap<(NodeId, PortId), MyValueType>) -> MyValueType {
-            match &self.input {
+            match &self {
                 NodeInput::AddScalar(input) => {
                     input.sum_scalar_values(evaluations).into()
                 }
@@ -587,39 +572,53 @@ pub fn evaluate(
         }
     }
 
-    let mut ranking_queue = Vec::new();
-    let mut evaluatees = HashMap::<NodeId, (usize, Evaluatee)>::new();
-    ranking_queue.push(Evaluatee::new(node_id, graph));
-    while !ranking_queue.is_empty() {
-        let mut next_queue = Vec::new();
-        next_queue.reserve(ranking_queue.len());
-        let previous_queue_size = ranking_queue.len();
+    fn collect_inputs(port: &VerticalInputPort<MyDataType>) -> InputType {
+        if let Some(constant) = port.using_default_value() {
+            InputType::Constant(constant)
+        } else {
+            let connections = port.iter_hooks().filter_map(|(_, c)| c.map(|c| c.as_output()).flatten()).collect();
+            InputType::Connections(connections)
+        }
+    }
 
-        for evaluatee in ranking_queue {
-            if let Some(rank) = evaluatee.find_rank(&evaluatees) {
-                evaluatees.insert(evaluatee.node_id, (rank, evaluatee));
+    let mut ranking_queue = HashMap::<NodeId, NodeInput>::new();
+    let mut evaluatees = HashMap::<NodeId, (usize, NodeInput)>::new();
+    ranking_queue.insert(node_id, NodeInput::new(node_id, graph));
+    while !ranking_queue.is_empty() {
+        let mut next_queue = HashMap::<NodeId, NodeInput>::new();
+        next_queue.reserve(ranking_queue.len());
+        let original_queue_size = ranking_queue.len();
+        let mut entries_added = false;
+
+        for (node_id, node_input) in ranking_queue {
+            if let Some(rank) = node_input.find_rank(&evaluatees) {
+                evaluatees.insert(node_id, (rank, node_input));
             } else {
-                next_queue.push(evaluatee);
+                for dep in node_input.dependencies() {
+                    entries_added = true;
+                    next_queue.insert(dep.node(), NodeInput::new(dep.node(), graph));
+                }
+                next_queue.insert(node_id, node_input);
             }
         }
 
-        if next_queue.len() == previous_queue_size {
-            anyhow::bail!("Circular dependency in graph!");
+        if original_queue_size == next_queue.len() && !entries_added {
+            anyhow::bail!("circular dependency!");
         }
 
         ranking_queue = next_queue;
     }
 
-    let mut evaluation_queue: Vec<(usize, Evaluatee)> = evaluatees.into_iter().map(|(_, e)| e).collect();
-    evaluation_queue.sort_by(|(r_a, _), (r_b, _)| r_a.cmp(r_b));
+    let mut evaluation_queue: Vec<(usize, NodeId, NodeInput)> = evaluatees.into_iter().map(|(id, (r, e))| (r, id, e)).collect();
+    evaluation_queue.sort_by(|(r_a, _, _), (r_b, _, _)| r_a.cmp(r_b));
 
     let mut evaluations = HashMap::<(NodeId, PortId), MyValueType>::new();
-    for (_, evaluatee) in evaluation_queue {
-        if let Some((output_port, _)) = graph.node(evaluatee.node_id).unwrap().outputs.iter().next() {
+    for (_, node_id, evaluatee) in evaluation_queue {
+        if let Some((output_port, _)) = graph.node(node_id).unwrap().outputs.iter().next() {
             let evaluation = evaluatee.evaluate(&evaluations);
-            evaluations.insert((evaluatee.node_id, output_port.into()), evaluation);
+            evaluations.insert((node_id, output_port.into()), evaluation);
         } else {
-            anyhow::bail!("missing output port for node {:?}", evaluatee.node_id);
+            anyhow::bail!("missing output port for node {:?}", node_id);
         }
     }
 
