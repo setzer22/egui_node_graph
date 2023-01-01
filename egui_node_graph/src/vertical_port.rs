@@ -41,6 +41,8 @@ pub struct VerticalPort<DataType> {
     hooks: SlotMap<HookId, Option<ConnectionToken>>,
     /// The next hook that's available for a connection
     available_hook: Option<HookId>,
+    /// What order should the hooks be displayed in
+    ordering: Vec<HookId>,
 }
 
 pub struct VerticalOutputPort<DataType: DataTypeTrait> {
@@ -60,7 +62,8 @@ impl<DataType: DataTypeTrait> VerticalOutputPort<DataType> {
                 connection_limit,
                 side: Side::Right,
                 hooks: SlotMap::with_key(),
-                available_hook: None
+                available_hook: None,
+                ordering: Vec::new(),
             }
         };
         result.base.consider_new_available_hook();
@@ -95,7 +98,8 @@ impl<DataType: DataTypeTrait> VerticalInputPort<DataType> {
                 connection_limit,
                 side: Side::Left,
                 hooks: SlotMap::with_key(),
-                available_hook: None
+                available_hook: None,
+                ordering: Vec::new(),
             }
         };
         result.base.consider_new_available_hook();
@@ -188,7 +192,6 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
         let edge_width = 1_f32;
         let hook_spacing = 1_f32;
         let radius = 5_f32;
-        let single_hook = self.connection_limit.filter(|v| *v == 1).is_some();
         let hook_count = self.hooks.len();
         let height_for_hooks: f32 = 2.0*edge_width + (2.0*radius + hook_spacing)*hook_count as f32 + hook_spacing;
         let port_rect = {
@@ -228,7 +231,7 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
             // the rectangles that are allocated sooner.
             let hook_selected: Option<(HookId, egui::Response)> = {
                 let mut next_hook_y = top_hook_y;
-                self.hooks.iter().find_map(|(hook_id, _)| {
+                self.ordering.iter().find_map(|hook_id| {
                     let hook_y = next_hook_y;
                     next_hook_y += hook_spacing + 2.0*radius;
                     let resp = ui.allocate_rect(
@@ -240,7 +243,7 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
                     );
 
                     if resp.hovered() || resp.drag_released() || resp.drag_started() {
-                        Some((hook_id, resp))
+                        Some((*hook_id, resp))
                     } else {
                         None
                     }
@@ -412,66 +415,63 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
             )
         };
 
-        if !single_hook {
-            // The port has multiple hooks so we'll draw the port rect
-            let node_color = context.recommend_node_background_color(ui, id.0);
-            ui.painter().rect(port_rect, egui::Rounding::default(), port_color, (0_f32, node_color));
-            let dark_stroke = (edge_width/2.0, node_color.lighten(0.8));
-            let light_stroke = (edge_width/2.0, node_color.lighten(1.2));
+        let node_color = context.recommend_node_background_color(ui, id.0);
+        ui.painter().rect(port_rect, egui::Rounding::default(), port_color, (0_f32, node_color));
+        let dark_stroke = (edge_width/2.0, node_color.lighten(0.8));
+        let light_stroke = (edge_width/2.0, node_color.lighten(1.2));
 
-            ui.painter().line_segment(
-                [
-                    egui::pos2(hook_x, port_rect.top()),
-                    egui::pos2(hook_x + port_edge_dx, port_rect.top()),
-                ], dark_stroke
-            );
-            ui.painter().line_segment(
-                [
-                    egui::pos2(hook_x, port_rect.bottom() + edge_width/2.0),
-                    egui::pos2(hook_x + port_edge_dx, port_rect.bottom() + edge_width/2.0),
-                ], dark_stroke
-            );
+        ui.painter().line_segment(
+            [
+                egui::pos2(hook_x, port_rect.top()),
+                egui::pos2(hook_x + port_edge_dx, port_rect.top()),
+            ], dark_stroke
+        );
+        ui.painter().line_segment(
+            [
+                egui::pos2(hook_x, port_rect.bottom() + edge_width/2.0),
+                egui::pos2(hook_x + port_edge_dx, port_rect.bottom() + edge_width/2.0),
+            ], dark_stroke
+        );
 
-            ui.painter().line_segment(
-                [
-                    egui::pos2(hook_x, port_rect.top() + edge_width/2.0),
-                    egui::pos2(hook_x + port_edge_dx, port_rect.top() + edge_width/2.0),
-                ], light_stroke
-            );
-            ui.painter().line_segment(
-                [
-                    egui::pos2(hook_x, port_rect.bottom()),
-                    egui::pos2(hook_x + port_edge_dx, port_rect.bottom()),
-                ], light_stroke
-            );
+        ui.painter().line_segment(
+            [
+                egui::pos2(hook_x, port_rect.top() + edge_width/2.0),
+                egui::pos2(hook_x + port_edge_dx, port_rect.top() + edge_width/2.0),
+            ], light_stroke
+        );
+        ui.painter().line_segment(
+            [
+                egui::pos2(hook_x, port_rect.bottom()),
+                egui::pos2(hook_x + port_edge_dx, port_rect.bottom()),
+            ], light_stroke
+        );
 
-            let (outer_stroke, inner_stroke, half_edge_dx) = if port_edge_dx > 0.0 {
-                (light_stroke, dark_stroke, -edge_width/2.0)
-            } else {
-                (dark_stroke, light_stroke, edge_width/2.0)
-            };
+        let (outer_stroke, inner_stroke, half_edge_dx) = if port_edge_dx > 0.0 {
+            (light_stroke, dark_stroke, -edge_width/2.0)
+        } else {
+            (dark_stroke, light_stroke, edge_width/2.0)
+        };
 
-            ui.painter().line_segment(
-                [
-                    egui::pos2(hook_x + port_edge_dx, port_rect.top()),
-                    egui::pos2(hook_x + port_edge_dx, port_rect.bottom()),
-                ], outer_stroke,
-            );
-            ui.painter().line_segment(
-                [
-                    egui::pos2(hook_x + port_edge_dx + half_edge_dx, port_rect.top() - edge_width/2.0),
-                    egui::pos2(hook_x + port_edge_dx + half_edge_dx, port_rect.bottom() + edge_width/2.0),
-                ], inner_stroke
-            );
-        }
+        ui.painter().line_segment(
+            [
+                egui::pos2(hook_x + port_edge_dx, port_rect.top()),
+                egui::pos2(hook_x + port_edge_dx, port_rect.bottom()),
+            ], outer_stroke,
+        );
+        ui.painter().line_segment(
+            [
+                egui::pos2(hook_x + port_edge_dx + half_edge_dx, port_rect.top() - edge_width/2.0),
+                egui::pos2(hook_x + port_edge_dx + half_edge_dx, port_rect.bottom() + edge_width/2.0),
+            ], inner_stroke
+        );
 
         // Now draw the hooks and save their locations
         let mut next_hook_y = top_hook_y;
-        for (hook_id, _) in &self.hooks {
+        for hook_id in &self.ordering {
             let color = hook_color_map.get(&hook_id).unwrap_or(&default_hook_color);
             let p = egui::pos2(hook_x, next_hook_y);
             ui.painter().circle(p, radius, *color, (0_f32, *color));
-            state.hook_geometry.insert(ConnectionId(id.0, id.1, hook_id), (p, self.tangent()));
+            state.hook_geometry.insert(ConnectionId(id.0, id.1, *hook_id), (p, self.tangent()));
             next_hook_y += hook_spacing + 2.0*radius;
         }
 
@@ -483,7 +483,9 @@ impl<DataType: DataTypeTrait> VerticalPort<DataType> {
     pub fn consider_new_available_hook(&mut self) {
         if self.available_hook.is_none() {
             if self.connection_limit.filter(|limit| *limit <= self.hooks.len()).is_none() {
-                self.available_hook = Some(self.hooks.insert(None));
+                let new_hook = self.hooks.insert(None);
+                self.available_hook = Some(new_hook);
+                self.ordering.push(new_hook);
             }
         }
     }
@@ -534,6 +536,7 @@ impl<DataType: DataTypeTrait> PortTrait for VerticalPort<DataType> {
             None => return Err(PortDropConnectionError::BadHook(id)),
         }.connected_to();
 
+        self.ordering.retain(|h| *h != id);
         self.hooks.remove(id);
         self.consider_new_available_hook();
 
@@ -548,6 +551,7 @@ impl<DataType: DataTypeTrait> PortTrait for VerticalPort<DataType> {
             }
         }
 
+        self.ordering.clear();
         self.hooks.clear();
         self.consider_new_available_hook();
 
