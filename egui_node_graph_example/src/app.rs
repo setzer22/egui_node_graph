@@ -215,7 +215,7 @@ impl NodeTemplateTrait for MyNodeTemplate {
                     .with_default_value(MyValueType::Scalar(1.0))
                 )
                 .with_input(
-                    VerticalInputPort::new("vec".to_owned(), MyDataType::Vec2, None, InputKind::ConnectionOrConstant)
+                    VerticalInputPort::new("vec".to_owned(), MyDataType::Vec2, Some(1), InputKind::ConnectionOrConstant)
                     .with_default_value(MyValueType::Vec2(egui::vec2(1.0, 1.0)))
                 )
                 .with_output(VerticalOutputPort::new("out".to_owned(), MyDataType::Vec2, None))
