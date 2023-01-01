@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-use slotmap::{SecondaryMap, SlotMap};
+use slotmap::SlotMap;
 
 pub type SVec<T> = smallvec::SmallVec<[T; 4]>;
 
@@ -11,17 +11,6 @@ pub use graph::*;
 /// Type declarations for the different id types (node, input, output)
 pub mod id_type;
 pub use id_type::*;
-
-/// Implements the index trait for the Graph type, allowing indexing by all
-/// three id types
-pub mod index_impls;
-
-/// Implementing the main methods for the `Graph`
-pub mod graph_impls;
-
-/// Custom error types, crate-wide
-pub mod error;
-pub use error::*;
 
 /// The main struct in the library, contains all the necessary state to draw the
 /// UI graph
@@ -35,6 +24,12 @@ pub use node_finder::*;
 /// The inner details of the egui implementation. Most egui code lives here.
 pub mod editor_ui;
 pub use editor_ui::*;
+
+pub mod vertical_port;
+pub use vertical_port::*;
+
+pub mod column_node;
+pub use column_node::*;
 
 /// Several traits that must be implemented by the user to customize the
 /// behavior of this library.
