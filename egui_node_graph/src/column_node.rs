@@ -130,7 +130,7 @@ where
             }
 
             for (output_id, port) in &mut self.outputs {
-                ui.with_layout(egui::Layout::right_to_left(), |ui| {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let (rect, port_responses): (egui::Rect, Vec<PortResponse<Self::DataType>>) = port.show(
                         ui, (node_id, PortId::Output(output_id)), state, style
                     );

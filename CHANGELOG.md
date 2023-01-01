@@ -1,5 +1,22 @@
 # CHANGELOG
 
+## 0.4.0
+
+### Changed
+- Make the node finder search bar case insensitive. By @matthijsjanssens
+- Add a `UserState` parameter to `build_node`. By @setzer22
+- Updated to egui 0.19. By @MathiasPius
+- Separate `UserState` from `GraphState` to allow more flexible borrowing patterns. By @kkngsm
+- Expose `UserState` and the `node_id` to `value_widget` for more flexible widgets. By @setzer22
+
+### Added
+- Connections snap to available ports. By @kkngsm
+- Add box selection and multi-node movement. By @setzer22
+- Nodes can decide whether to show the delete button. By @huisedenanhai
+
+### Bugfixes
+- Disconnect responses are now return before node removal responses. By @bpostlethwaite
+
 ## 0.3.0
 
 ### Changed
