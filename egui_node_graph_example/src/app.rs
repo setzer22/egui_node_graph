@@ -152,7 +152,8 @@ impl NodeTemplateTrait for MyNodeTemplate {
         position: egui::Pos2,
         _app_state: &mut MyAppState,
     ) -> Self::Node {
-        let node = MyNode::new(position, self.node_graph_label(), MyNodeContent::new(*self));
+        let node = MyNode::new(position, self.node_graph_label(), MyNodeContent::new(*self))
+            .with_size_hint(120.0);
         match self {
             MyNodeTemplate::AddScalar => {
                 node
@@ -283,7 +284,7 @@ impl NodeContentTrait for MyNodeContent {
         ui: &mut egui::Ui,
         app_state: &Self::AppState,
         node_id: NodeId,
-    ) -> Vec<Self::Response> {
+    ) -> (egui::Rect, Vec<Self::Response>) {
         // This logic is entirely up to the user. In this case, we check if the
         // current node we're drawing is the active one, by comparing against
         // the value stored in the global user state, and draw different button
@@ -299,20 +300,24 @@ impl NodeContentTrait for MyNodeContent {
         // or clear the active node. These responses do nothing by themselves,
         // the library only makes the responses available to you after the graph
         // has been drawn. See below at the update method for an example.
-        if !is_active {
-            if ui.button("👁 Set active").clicked() {
+        let rect = if !is_active {
+            let resp = ui.button("👁 Set active");
+            if resp.clicked() {
                 responses.push(MyResponse::SetActiveNode(node_id));
             }
+            resp.rect
         } else {
             let button =
                 egui::Button::new(egui::RichText::new("👁 Active").color(egui::Color32::BLACK))
                     .fill(egui::Color32::GOLD);
-            if ui.add(button).clicked() {
+            let resp = ui.add(button);
+            if resp.clicked() {
                 responses.push(MyResponse::ClearActiveNode);
             }
-        }
+            resp.rect
+        };
 
-        responses
+        (rect, responses)
     }
 }
 

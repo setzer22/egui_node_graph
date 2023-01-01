@@ -96,7 +96,7 @@ where
             let mut inner_rect = outer_rect_bounds.shrink2(margin);
 
             // Try to use the size hint, unless our outer limits are smaller
-            inner_rect.max.x = inner_rect.max.x.min(self.size_hint);
+            inner_rect.max.x = inner_rect.max.x.min(self.size_hint + inner_rect.min.x);
 
             // Make sure we don't shrink to the negative
             inner_rect.max.x = inner_rect.max.x.max(inner_rect.min.x);
@@ -117,7 +117,8 @@ where
                 ui.add_space(8.0); // The size of the little cross icon
             }).response.rect;
             self.size_hint = title_rect.width();
-            title_height = title_rect.height();
+            ui.add_space(margin.y);
+            title_height = ui.min_size().y;
 
             for (input_id, port) in &mut self.inputs {
                 ui.horizontal(|ui| {
@@ -139,7 +140,9 @@ where
                 });
             }
 
-            responses.extend(self.content.content_ui(ui, app, node_id).into_iter().map(NodeResponse::Content));
+            let (rect, resp) = self.content.content_ui(ui, app, node_id);
+            self.size_hint = self.size_hint.max(rect.width() + 3.0*margin.x);
+            responses.extend(resp.into_iter().map(NodeResponse::Content));
         });
 
         let (shape, outline, outer_rect) = {

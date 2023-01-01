@@ -116,7 +116,7 @@ pub trait NodeContentTrait: Sized {
         ui: &mut egui::Ui,
         app: &Self::AppState,
         node_id: NodeId,
-    ) -> Vec<Self::Response>;
+    ) -> (egui::Rect, Vec<Self::Response>);
 
     /// Set background color on titlebar
     /// If the return value is None, the default color is set.
