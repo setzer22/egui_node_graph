@@ -3,7 +3,6 @@ name = "egui_node_graph_example"
 version = "0.1.0"
 authors = ["setzer22"]
 edition = "2021"
-rust-version = "1.56"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
