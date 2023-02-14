@@ -409,9 +409,9 @@ where
             self.node_finder = None;
         }
 
-        if r.dragged() && ui.ctx().input().pointer.middle_down() {
-            self.pan_zoom.pan += ui.ctx().input().pointer.delta();
-        }
+        // if r.dragged() && ui.ctx().input().pointer.middle_down() {
+        //     self.pan_zoom.pan += ui.ctx().input().pointer.delta();
+        // }
 
         // Deselect and deactivate finder if the editor backround is clicked,
         // *or* if the the mouse clicks off the ui
@@ -473,34 +473,13 @@ where
         ui: &mut Ui,
         user_state: &mut UserState,
     ) -> Vec<NodeResponse<UserResponse, NodeData>> {
-        let node_id = self.node_id;
-        let graph_node_area = Area::new(Id::new(node_id))
-            .order(Order::Middle)
-            .current_pos(*self.position + self.pan);
-        let InnerResponse {
-            inner: mut node_responses,
-            response,
-        } = graph_node_area.show(ui.ctx(), |ui| Self::show_graph_node(self, ui, user_state));
+        let mut child_ui = ui.child_ui_with_id_source(
+            Rect::from_min_size(*self.position + self.pan, Self::MAX_NODE_SIZE.into()),
+            Layout::default(),
+            self.node_id,
+        );
 
-        // Movement
-        let drag_delta = response.drag_delta();
-        if drag_delta.length_sq() > 0.0 {
-            node_responses.push(NodeResponse::MoveNode {
-                node: node_id,
-                drag_delta,
-            });
-            node_responses.push(NodeResponse::RaiseNode(node_id));
-        }
-
-        // Node selection
-        //
-        // HACK: Only set the select response when no other response is active.
-        // This prevents some issues.
-        if node_responses.is_empty() && response.clicked_by(PointerButton::Primary) {
-            node_responses.push(NodeResponse::SelectNode(node_id));
-            node_responses.push(NodeResponse::RaiseNode(node_id));
-        }
-        node_responses
+        Self::show_graph_node(self, &mut child_ui, user_state)
     }
 
     /// Draws this node. Also fills in the list of port locations with all of its ports.
@@ -811,6 +790,31 @@ where
         if can_delete && Self::close_button(ui, outer_rect).clicked() {
             responses.push(NodeResponse::DeleteNodeUi(self.node_id));
         };
+
+        let window_response = ui.interact(
+            outer_rect,
+            Id::new((self.node_id, "window")),
+            Sense::click_and_drag(),
+        );
+
+        // Movement
+        let drag_delta = window_response.drag_delta();
+        if drag_delta.length_sq() > 0.0 {
+            responses.push(NodeResponse::MoveNode {
+                node: self.node_id,
+                drag_delta,
+            });
+            responses.push(NodeResponse::RaiseNode(self.node_id));
+        }
+
+        // Node selection
+        //
+        // HACK: Only set the select response when no other response is active.
+        // This prevents some issues.
+        if responses.is_empty() && window_response.clicked_by(PointerButton::Primary) {
+            responses.push(NodeResponse::SelectNode(self.node_id));
+            responses.push(NodeResponse::RaiseNode(self.node_id));
+        }
 
         responses
     }
