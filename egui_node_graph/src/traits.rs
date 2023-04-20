@@ -13,10 +13,11 @@ pub trait WidgetValueTrait: Default {
     type Response;
     type UserState;
     type NodeData;
+
     /// This method will be called for each input parameter with a widget. The
     /// return value is a vector of custom response objects which can be used
     /// to implement handling of side effects. If unsure, the response Vec can
-    /// be empty.
+    /// be empty. It isn't called if the input is connected.
     fn value_widget(
         &mut self,
         param_name: &str,
@@ -25,6 +26,24 @@ pub trait WidgetValueTrait: Default {
         user_state: &mut Self::UserState,
         node_data: &Self::NodeData,
     ) -> Vec<Self::Response>;
+
+    /// This method will be called for each input parameter with a widget. The
+    /// return value is a vector of custom response objects which can be used
+    /// to implement handling of side effects. If unsure, the response Vec can
+    /// be empty. This differs from [`WidgetValueTrait::value_widget`]
+    /// by being called if and only if the input has a connection.
+    fn value_widget_connected(
+        &mut self,
+        param_name: &str,
+        _node_id: NodeId,
+        ui: &mut egui::Ui,
+        _user_state: &mut Self::UserState,
+        _node_data: &Self::NodeData,
+    ) -> Vec<Self::Response> {
+        ui.label(param_name);
+
+        Default::default()
+    }
 }
 
 /// This trait must be implemented by the `DataType` generic parameter of the
