@@ -19,5 +19,6 @@ fn main() {
             #[cfg(not(feature = "persistence"))]
             Box::new(egui_node_graph_example::NodeGraphExample::default())
         }),
-    );
+    )
+    .expect("Failed to run native example");
 }
