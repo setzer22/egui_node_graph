@@ -144,6 +144,17 @@ where
         inconsistent self. It has either more or less values than the graph."
         );
 
+        // Allocate rect before the nodes, otherwise this will block the interaction
+        // with the nodes.
+        let r = ui.allocate_rect(ui.min_rect(), Sense::click().union(Sense::drag()));
+        if r.clicked() {
+            click_on_background = true;
+        } else if r.drag_started() {
+            drag_started_on_background = true;
+        } else if r.drag_released() {
+            drag_released_on_background = true;
+        }
+
         /* Draw nodes */
         for node_id in self.node_order.iter().copied() {
             let responses = GraphNodeWidget {
@@ -163,15 +174,6 @@ where
 
             // Actions executed later
             delayed_responses.extend(responses);
-        }
-
-        let r = ui.allocate_rect(ui.min_rect(), Sense::click().union(Sense::drag()));
-        if r.clicked() {
-            click_on_background = true;
-        } else if r.drag_started() {
-            drag_started_on_background = true;
-        } else if r.drag_released() {
-            drag_released_on_background = true;
         }
 
         /* Draw the node finder, if open */
@@ -510,6 +512,16 @@ where
         let background_shape = ui.painter().add(Shape::Noop);
 
         let outer_rect_bounds = ui.available_rect_before_wrap();
+
+        // Hack?: Call this before the content of the node
+        // to ensure interaction works after egui 0.19. Otherwise the layers block
+        // hover interaction
+        let window_response = ui.interact(
+            outer_rect_bounds,
+            Id::new((self.node_id, "window")),
+            Sense::click_and_drag(),
+        );
+
         let mut inner_rect = outer_rect_bounds.shrink2(margin);
 
         // Make sure we don't shrink to the negative:
@@ -794,12 +806,6 @@ where
         if can_delete && Self::close_button(ui, outer_rect).clicked() {
             responses.push(NodeResponse::DeleteNodeUi(self.node_id));
         };
-
-        let window_response = ui.interact(
-            outer_rect,
-            Id::new((self.node_id, "window")),
-            Sense::click_and_drag(),
-        );
 
         // Movement
         let drag_delta = window_response.drag_delta();
