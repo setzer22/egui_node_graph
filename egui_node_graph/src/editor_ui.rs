@@ -455,6 +455,9 @@ fn draw_connection(painter: &Painter, src_pos: Pos2, dst_pos: Pos2, color: Color
     painter.add(bezier);
 }
 
+#[derive(Clone, Copy, Debug)]
+struct OuterRectMemory(Rect);
+
 impl<'a, NodeData, DataType, ValueType, UserResponse, UserState>
     GraphNodeWidget<'a, NodeData, DataType, ValueType>
 where
@@ -513,15 +516,6 @@ where
 
         let outer_rect_bounds = ui.available_rect_before_wrap();
 
-        // Hack?: Call this before the content of the node
-        // to ensure interaction works after egui 0.19. Otherwise the layers block
-        // hover interaction
-        let window_response = ui.interact(
-            outer_rect_bounds,
-            Id::new((self.node_id, "window")),
-            Sense::click_and_drag(),
-        );
-
         let mut inner_rect = outer_rect_bounds.shrink2(margin);
 
         // Make sure we don't shrink to the negative:
@@ -529,6 +523,24 @@ where
         inner_rect.max.y = inner_rect.max.y.max(inner_rect.min.y);
 
         let mut child_ui = ui.child_ui(inner_rect, *ui.layout());
+
+        // Get interaction rect from memory, it may expand after the window response on resize.
+        let interaction_rect = ui
+            .ctx()
+            .memory_mut(|mem| {
+                mem.data
+                    .get_temp::<OuterRectMemory>(child_ui.id())
+                    .map(|stored| stored.0)
+            })
+            .unwrap_or(outer_rect_bounds);
+        // After 0.20, layers added over others can block hover interaction. Call this first
+        // before creating the node content.
+        let window_response = ui.interact(
+            interaction_rect,
+            Id::new((self.node_id, "window")),
+            Sense::click_and_drag(),
+        );
+
         let mut title_height = 0.0;
 
         let mut input_port_heights = vec![];
@@ -599,6 +611,12 @@ where
         let outer_rect = child_ui.min_rect().expand2(margin);
         let port_left = outer_rect.left();
         let port_right = outer_rect.right();
+
+        // Save expanded rect to memory.
+        ui.ctx().memory_mut(|mem| {
+            mem.data
+                .insert_temp(child_ui.id(), OuterRectMemory(outer_rect))
+        });
 
         #[allow(clippy::too_many_arguments)]
         fn draw_port<NodeData, DataType, ValueType, UserResponse, UserState>(
