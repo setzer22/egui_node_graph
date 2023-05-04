@@ -91,6 +91,20 @@ where
     where
         Self::Response: UserResponseTrait;
 
+    // UI to draw on the top bar of the node.
+    fn top_bar_ui(
+        &self,
+        _ui: &mut egui::Ui,
+        _node_id: NodeId,
+        _graph: &Graph<Self, Self::DataType, Self::ValueType>,
+        _user_state: &mut Self::UserState,
+    ) -> Vec<NodeResponse<Self::Response, Self>>
+    where
+        Self::Response: UserResponseTrait,
+    {
+        Default::default()
+    }
+
     /// Set background color on titlebar
     /// If the return value is None, the default color is set.
     fn titlebar_color(

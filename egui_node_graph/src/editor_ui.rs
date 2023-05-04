@@ -527,6 +527,12 @@ where
                         .text_style(TextStyle::Button)
                         .color(text_color),
                 ));
+                responses.extend(
+                    self.graph[self.node_id]
+                        .user_data
+                        .top_bar_ui(ui, self.node_id, self.graph, user_state)
+                        .into_iter(),
+                );
                 ui.add_space(8.0); // The size of the little cross icon
             });
             ui.add_space(margin.y);
