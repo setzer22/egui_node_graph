@@ -610,7 +610,12 @@ where
             let outputs = self.graph[self.node_id].outputs.clone();
             for (param_name, _param) in outputs {
                 let height_before = ui.min_rect().bottom();
-                ui.label(&param_name);
+                responses.extend(
+                    self.graph[self.node_id]
+                        .user_data
+                        .output_ui(ui, self.node_id, self.graph, user_state, &param_name)
+                        .into_iter(),
+                );
                 let height_after = ui.min_rect().bottom();
                 output_port_heights.push((height_before + height_after) / 2.0);
             }
