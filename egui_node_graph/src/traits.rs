@@ -14,10 +14,11 @@ pub trait WidgetValueTrait: Default {
     type UserState;
     type NodeData;
 
-    /// This method will be called for each input parameter with a widget. The
-    /// return value is a vector of custom response objects which can be used
+    /// This method will be called for each input parameter with a widget with an disconnected
+    /// input only. To display UI for connected inputs use [`WidgetValueTrait::value_widget_connected`].
+    /// The return value is a vector of custom response objects which can be used
     /// to implement handling of side effects. If unsure, the response Vec can
-    /// be empty. It isn't called if the input is connected.
+    /// be empty.
     fn value_widget(
         &mut self,
         param_name: &str,
@@ -27,11 +28,13 @@ pub trait WidgetValueTrait: Default {
         node_data: &Self::NodeData,
     ) -> Vec<Self::Response>;
 
-    /// This method will be called for each input parameter with a widget. The
-    /// return value is a vector of custom response objects which can be used
+    /// This method will be called for each input parameter with a widget with a connected
+    /// input only. To display UI for diconnected inputs use [`WidgetValueTrait::value_widget`].
+    /// The return value is a vector of custom response objects which can be used
     /// to implement handling of side effects. If unsure, the response Vec can
-    /// be empty. This differs from [`WidgetValueTrait::value_widget`]
-    /// by being called if and only if the input has a connection.
+    /// be empty.
+    ///
+    /// Shows the input name label by default.
     fn value_widget_connected(
         &mut self,
         param_name: &str,
