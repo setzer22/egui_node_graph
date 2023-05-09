@@ -158,6 +158,22 @@ where
         None
     }
 
+    /// Separator to put between elements in the node.
+    ///
+    /// Invoked between inputs, outputs and bottom UI. Useful for
+    /// complicated UIs that start to lose structure without explicit
+    /// separators.
+    ///
+    /// Default implementation does nothing.
+    fn separator(
+        &self,
+        _ui: &mut egui::Ui,
+        _node_id: NodeId,
+        _graph: &Graph<Self, Self::DataType, Self::ValueType>,
+        _user_state: &mut Self::UserState,
+    ) {
+    }
+
     fn can_delete(
         &self,
         _node_id: NodeId,

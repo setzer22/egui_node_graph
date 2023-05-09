@@ -600,6 +600,13 @@ where
                         responses.extend(node_responses.into_iter().map(NodeResponse::User));
                     }
 
+                    self.graph[self.node_id].user_data.separator(
+                        ui,
+                        self.node_id,
+                        self.graph,
+                        user_state,
+                    );
+
                     self.graph[param_id].value = value;
 
                     let height_after = ui.min_rect().bottom();
@@ -616,6 +623,14 @@ where
                         .output_ui(ui, self.node_id, self.graph, user_state, &param_name)
                         .into_iter(),
                 );
+
+                self.graph[self.node_id].user_data.separator(
+                    ui,
+                    self.node_id,
+                    self.graph,
+                    user_state,
+                );
+
                 let height_after = ui.min_rect().bottom();
                 output_port_heights.push((height_before + height_after) / 2.0);
             }
