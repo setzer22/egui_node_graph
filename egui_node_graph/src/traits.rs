@@ -113,7 +113,7 @@ where
     where
         Self::Response: UserResponseTrait;
 
-    // UI to draw on the top bar of the node.
+    /// UI to draw on the top bar of the node.
     fn top_bar_ui(
         &self,
         _ui: &mut egui::Ui,
