@@ -127,6 +127,25 @@ where
         Default::default()
     }
 
+    /// UI to draw for each output
+    ///
+    /// Defaults to showing param_name as a simple label.
+    fn output_ui(
+        &self,
+        ui: &mut egui::Ui,
+        _node_id: NodeId,
+        _graph: &Graph<Self, Self::DataType, Self::ValueType>,
+        _user_state: &mut Self::UserState,
+        param_name: &str,
+    ) -> Vec<NodeResponse<Self::Response, Self>>
+    where
+        Self::Response: UserResponseTrait,
+    {
+        ui.label(param_name);
+
+        Default::default()
+    }
+
     /// Set background color on titlebar
     /// If the return value is None, the default color is set.
     fn titlebar_color(
