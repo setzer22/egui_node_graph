@@ -116,7 +116,9 @@ where
         let editor_rect = ui.max_rect();
         ui.allocate_rect(editor_rect, Sense::hover());
 
-        let cursor_pos = ui.ctx().input().pointer.hover_pos().unwrap_or(Pos2::ZERO);
+        let cursor_pos = ui
+            .ctx()
+            .input(|i| i.pointer.hover_pos().unwrap_or(Pos2::ZERO));
         let mut cursor_in_editor = editor_rect.contains(cursor_pos);
         let mut cursor_in_finder = false;
 
@@ -142,6 +144,17 @@ where
         inconsistent self. It has either more or less values than the graph."
         );
 
+        // Allocate rect before the nodes, otherwise this will block the interaction
+        // with the nodes.
+        let r = ui.allocate_rect(ui.min_rect(), Sense::click().union(Sense::drag()));
+        if r.clicked() {
+            click_on_background = true;
+        } else if r.drag_started() {
+            drag_started_on_background = true;
+        } else if r.drag_released() {
+            drag_released_on_background = true;
+        }
+
         /* Draw nodes */
         for node_id in self.node_order.iter().copied() {
             let responses = GraphNodeWidget {
@@ -161,15 +174,6 @@ where
 
             // Actions executed later
             delayed_responses.extend(responses);
-        }
-
-        let r = ui.allocate_rect(ui.min_rect(), Sense::click().union(Sense::drag()));
-        if r.clicked() {
-            click_on_background = true;
-        } else if r.drag_started() {
-            drag_started_on_background = true;
-        } else if r.drag_released() {
-            drag_released_on_background = true;
         }
 
         /* Draw the node finder, if open */
@@ -395,7 +399,7 @@ where
         /* Mouse input handling */
 
         // This locks the context, so don't hold on to it for too long.
-        let mouse = &ui.ctx().input().pointer;
+        let mouse = &ui.ctx().input(|i| i.pointer.clone());
 
         if mouse.any_released() && self.connection_in_progress.is_some() {
             self.connection_in_progress = None;
@@ -404,12 +408,12 @@ where
         if mouse.secondary_released() && cursor_in_editor && !cursor_in_finder {
             self.node_finder = Some(NodeFinder::new_at(cursor_pos));
         }
-        if ui.ctx().input().key_pressed(Key::Escape) {
+        if ui.ctx().input(|i| i.key_pressed(Key::Escape)) {
             self.node_finder = None;
         }
 
-        if r.dragged() && ui.ctx().input().pointer.middle_down() {
-            self.pan_zoom.pan += ui.ctx().input().pointer.delta();
+        if r.dragged() && ui.ctx().input(|i| i.pointer.middle_down()) {
+            self.pan_zoom.pan += ui.ctx().input(|i| i.pointer.delta());
         }
 
         // Deselect and deactivate finder if the editor backround is clicked,
@@ -450,6 +454,9 @@ fn draw_connection(painter: &Painter, src_pos: Pos2, dst_pos: Pos2, color: Color
 
     painter.add(bezier);
 }
+
+#[derive(Clone, Copy, Debug)]
+struct OuterRectMemory(Rect);
 
 impl<'a, NodeData, DataType, ValueType, UserResponse, UserState>
     GraphNodeWidget<'a, NodeData, DataType, ValueType>
@@ -508,6 +515,7 @@ where
         let background_shape = ui.painter().add(Shape::Noop);
 
         let outer_rect_bounds = ui.available_rect_before_wrap();
+
         let mut inner_rect = outer_rect_bounds.shrink2(margin);
 
         // Make sure we don't shrink to the negative:
@@ -515,6 +523,24 @@ where
         inner_rect.max.y = inner_rect.max.y.max(inner_rect.min.y);
 
         let mut child_ui = ui.child_ui(inner_rect, *ui.layout());
+
+        // Get interaction rect from memory, it may expand after the window response on resize.
+        let interaction_rect = ui
+            .ctx()
+            .memory_mut(|mem| {
+                mem.data
+                    .get_temp::<OuterRectMemory>(child_ui.id())
+                    .map(|stored| stored.0)
+            })
+            .unwrap_or(outer_rect_bounds);
+        // After 0.20, layers added over others can block hover interaction. Call this first
+        // before creating the node content.
+        let window_response = ui.interact(
+            interaction_rect,
+            Id::new((self.node_id, "window")),
+            Sense::click_and_drag(),
+        );
+
         let mut title_height = 0.0;
 
         let mut input_port_heights = vec![];
@@ -592,6 +618,12 @@ where
         let port_left = outer_rect.left();
         let port_right = outer_rect.right();
 
+        // Save expanded rect to memory.
+        ui.ctx().memory_mut(|mem| {
+            mem.data
+                .insert_temp(child_ui.id(), OuterRectMemory(outer_rect))
+        });
+
         #[allow(clippy::too_many_arguments)]
         fn draw_port<NodeData, DataType, ValueType, UserResponse, UserState>(
             ui: &mut Ui,
@@ -634,7 +666,7 @@ where
                 port_type.data_type_color(user_state)
             };
             ui.painter()
-                .circle(port_rect.center(), 5.0, port_color, Stroke::none());
+                .circle(port_rect.center(), 5.0, port_color, Stroke::NONE);
 
             if resp.drag_started() {
                 if is_connected_input {
@@ -656,7 +688,7 @@ where
                     // Don't allow self-loops
                     if graph.any_param_type(origin_param).unwrap() == port_type
                         && close_enough
-                        && ui.input().pointer.any_released()
+                        && ui.input(|i| i.pointer.any_released())
                     {
                         match (param_id, origin_param) {
                             (AnyParameterId::Input(input), AnyParameterId::Output(output))
@@ -740,7 +772,7 @@ where
                     .user_data
                     .titlebar_color(ui, self.node_id, self.graph, user_state)
                     .unwrap_or_else(|| background_color.lighten(0.8)),
-                stroke: Stroke::none(),
+                stroke: Stroke::NONE,
             });
 
             let body_rect = Rect::from_min_size(
@@ -751,7 +783,7 @@ where
                 rect: body_rect,
                 rounding: Rounding::none(),
                 fill: background_color,
-                stroke: Stroke::none(),
+                stroke: Stroke::NONE,
             });
 
             let bottom_body_rect = Rect::from_min_size(
@@ -762,7 +794,7 @@ where
                 rect: bottom_body_rect,
                 rounding,
                 fill: background_color,
-                stroke: Stroke::none(),
+                stroke: Stroke::NONE,
             });
 
             let node_rect = titlebar_rect.union(body_rect).union(bottom_body_rect);
@@ -771,7 +803,7 @@ where
                     rect: node_rect.expand(1.0),
                     rounding,
                     fill: Color32::WHITE.lighten(0.8),
-                    stroke: Stroke::none(),
+                    stroke: Stroke::NONE,
                 })
             } else {
                 Shape::Noop
@@ -798,12 +830,6 @@ where
         if can_delete && Self::close_button(ui, outer_rect).clicked() {
             responses.push(NodeResponse::DeleteNodeUi(self.node_id));
         };
-
-        let window_response = ui.interact(
-            outer_rect,
-            Id::new((self.node_id, "window")),
-            Sense::click_and_drag(),
-        );
 
         // Movement
         let drag_delta = window_response.drag_delta();
