@@ -83,7 +83,7 @@ pub struct GraphNodeWidget<'a, NodeData, DataType, ValueType> {
     pub pan: egui::Vec2,
 }
 
-impl<NodeData, DataType, ValueType, NodeTemplate, UserResponse, UserState>
+impl<NodeData, DataType, ValueType, NodeTemplate, UserResponse, UserState, CategoryType>
     GraphEditorState<NodeData, DataType, ValueType, NodeTemplate, UserState>
 where
     NodeData: NodeDataTrait<
@@ -100,8 +100,10 @@ where
         DataType = DataType,
         ValueType = ValueType,
         UserState = UserState,
+        CategoryType = CategoryType,
     >,
     DataType: DataTypeTrait<UserState>,
+    CategoryType: CategoryTrait,
 {
     #[must_use]
     pub fn draw_graph_editor(
