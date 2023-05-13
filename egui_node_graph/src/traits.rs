@@ -162,13 +162,15 @@ where
     ///
     /// Invoked between inputs, outputs and bottom UI. Useful for
     /// complicated UIs that start to lose structure without explicit
-    /// separators.
+    /// separators. The `param_id` argument is the id of input or output
+    /// *preceeding* the separator.
     ///
     /// Default implementation does nothing.
     fn separator(
         &self,
         _ui: &mut egui::Ui,
         _node_id: NodeId,
+        _param_id: AnyParameterId,
         _graph: &Graph<Self, Self::DataType, Self::ValueType>,
         _user_state: &mut Self::UserState,
     ) {

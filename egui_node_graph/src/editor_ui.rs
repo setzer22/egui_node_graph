@@ -603,6 +603,7 @@ where
                     self.graph[self.node_id].user_data.separator(
                         ui,
                         self.node_id,
+                        AnyParameterId::Input(param_id),
                         self.graph,
                         user_state,
                     );
@@ -615,7 +616,7 @@ where
             }
 
             let outputs = self.graph[self.node_id].outputs.clone();
-            for (param_name, _param) in outputs {
+            for (param_name, param_id) in outputs {
                 let height_before = ui.min_rect().bottom();
                 responses.extend(
                     self.graph[self.node_id]
@@ -627,6 +628,7 @@ where
                 self.graph[self.node_id].user_data.separator(
                     ui,
                     self.node_id,
+                    AnyParameterId::Output(param_id),
                     self.graph,
                     user_state,
                 );
