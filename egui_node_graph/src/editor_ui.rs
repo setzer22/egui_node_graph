@@ -114,12 +114,12 @@ where
         // (so for windows it will use up to the resizeably set limit
         // and for a Panel it will fill it completely)
         let editor_rect = ui.max_rect();
-        ui.allocate_rect(editor_rect, Sense::hover());
+        let resp = ui.allocate_rect(editor_rect, Sense::hover());
 
         let cursor_pos = ui
             .ctx()
             .input(|i| i.pointer.hover_pos().unwrap_or(Pos2::ZERO));
-        let mut cursor_in_editor = editor_rect.contains(cursor_pos);
+        let mut cursor_in_editor = resp.hovered();
         let mut cursor_in_finder = false;
 
         // Gets filled with the node metrics as they are drawn
