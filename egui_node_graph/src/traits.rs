@@ -194,6 +194,38 @@ pub trait NodeTemplateIter {
     fn all_kinds(&self) -> Vec<Self::Item>;
 }
 
+/// Describes a category of nodes.
+///
+/// Used by [`NodeTemplateTrait::node_finder_categories`] to categorize nodes
+/// templates into groups.
+///
+/// If all nodes in a program are known beforehand, it's usefult to define
+/// an enum containing all categories and implement [`CategoryTrait`] for it. This will
+/// make it impossible to accidentally create a new category by mis-typing an existing
+/// one, like in the case of using string types.
+pub trait CategoryTrait {
+    /// Name of the category.
+    fn name(&self) -> String;
+}
+
+impl CategoryTrait for () {
+    fn name(&self) -> String {
+        String::new()
+    }
+}
+
+impl<'a> CategoryTrait for &'a str {
+    fn name(&self) -> String {
+        self.to_string()
+    }
+}
+
+impl CategoryTrait for String {
+    fn name(&self) -> String {
+        self.clone()
+    }
+}
+
 /// This trait must be implemented by the `NodeTemplate` generic parameter of
 /// the [`GraphEditorState`]. It allows the customization of node templates. A
 /// node template is what describes what kinds of nodes can be added to the
@@ -207,6 +239,12 @@ pub trait NodeTemplateTrait: Clone {
     type ValueType;
     /// Must be set to the custom user `UserState` type
     type UserState;
+    /// Must be a type that implements the [`CategoryTrait`] trait.
+    ///
+    /// `&'static str` is a good default if you intend to simply type out
+    /// the categories of your node. Use `()` if you don't need categories
+    /// at all.
+    type CategoryType;
 
     /// Returns a descriptive name for the node kind, used in the node finder.
     ///
@@ -214,6 +252,15 @@ pub trait NodeTemplateTrait: Clone {
     /// more flexibly. Refer to the documentation for `DataTypeTrait::name` for
     /// more information
     fn node_finder_label(&self, user_state: &mut Self::UserState) -> std::borrow::Cow<str>;
+
+    /// Vec of categories to which the node belongs.
+    ///
+    /// It's often useful to organize similar nodes into categories, which will
+    /// then be used by the node finder to show a more manageable UI, especially
+    /// if the node template are numerous.
+    fn node_finder_categories(&self, _user_state: &mut Self::UserState) -> Vec<Self::CategoryType> {
+        Vec::default()
+    }
 
     /// Returns a descriptive name for the node kind, used in the graph.
     fn node_graph_label(&self, user_state: &mut Self::UserState) -> String;

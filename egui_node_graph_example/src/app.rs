@@ -71,13 +71,13 @@ impl MyValueType {
 #[derive(Clone, Copy)]
 #[cfg_attr(feature = "persistence", derive(serde::Serialize, serde::Deserialize))]
 pub enum MyNodeTemplate {
-    MakeVector,
     MakeScalar,
     AddScalar,
     SubtractScalar,
-    VectorTimesScalar,
+    MakeVector,
     AddVector,
     SubtractVector,
+    VectorTimesScalar,
 }
 
 /// The response type is used to encode side-effects produced when drawing a
@@ -125,17 +125,31 @@ impl NodeTemplateTrait for MyNodeTemplate {
     type DataType = MyDataType;
     type ValueType = MyValueType;
     type UserState = MyGraphState;
+    type CategoryType = &'static str;
 
     fn node_finder_label(&self, _user_state: &mut Self::UserState) -> Cow<'_, str> {
         Cow::Borrowed(match self {
-            MyNodeTemplate::MakeVector => "New vector",
             MyNodeTemplate::MakeScalar => "New scalar",
             MyNodeTemplate::AddScalar => "Scalar add",
             MyNodeTemplate::SubtractScalar => "Scalar subtract",
+            MyNodeTemplate::MakeVector => "New vector",
             MyNodeTemplate::AddVector => "Vector add",
             MyNodeTemplate::SubtractVector => "Vector subtract",
             MyNodeTemplate::VectorTimesScalar => "Vector times scalar",
         })
+    }
+
+    // this is what allows the library to show collapsible lists in the node finder.
+    fn node_finder_categories(&self, _user_state: &mut Self::UserState) -> Vec<&'static str> {
+        match self {
+            MyNodeTemplate::MakeScalar
+            | MyNodeTemplate::AddScalar
+            | MyNodeTemplate::SubtractScalar => vec!["Scalar"],
+            MyNodeTemplate::MakeVector
+            | MyNodeTemplate::AddVector
+            | MyNodeTemplate::SubtractVector => vec!["Vector"],
+            MyNodeTemplate::VectorTimesScalar => vec!["Vector", "Scalar"],
+        }
     }
 
     fn node_graph_label(&self, user_state: &mut Self::UserState) -> String {

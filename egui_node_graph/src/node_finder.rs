@@ -1,6 +1,6 @@
-use std::marker::PhantomData;
+use std::{collections::BTreeMap, marker::PhantomData};
 
-use crate::{color_hex_utils::*, NodeTemplateIter, NodeTemplateTrait};
+use crate::{color_hex_utils::*, CategoryTrait, NodeTemplateIter, NodeTemplateTrait};
 
 use egui::*;
 
@@ -14,9 +14,11 @@ pub struct NodeFinder<NodeTemplate> {
     _phantom: PhantomData<NodeTemplate>,
 }
 
-impl<NodeTemplate, NodeData, UserState> NodeFinder<NodeTemplate>
+impl<NodeTemplate, NodeData, UserState, CategoryType> NodeFinder<NodeTemplate>
 where
-    NodeTemplate: NodeTemplateTrait<NodeData = NodeData, UserState = UserState>,
+    NodeTemplate:
+        NodeTemplateTrait<NodeData = NodeData, UserState = UserState, CategoryType = CategoryType>,
+    CategoryType: CategoryTrait,
 {
     pub fn new_at(pos: Pos2) -> Self {
         NodeFinder {
@@ -62,11 +64,28 @@ where
                     resp.request_focus();
                     self.just_spawned = false;
                 }
+                let update_open = resp.changed();
 
                 let mut query_submit = resp.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
 
                 let max_height = ui.input(|i| i.screen_rect.height() * 0.5);
                 let scroll_area_width = resp.rect.width() - 30.0;
+
+                let all_kinds = all_kinds.all_kinds();
+                let mut categories: BTreeMap<String, Vec<&NodeTemplate>> = Default::default();
+                let mut orphan_kinds = Vec::new();
+
+                for kind in &all_kinds {
+                    let kind_categories = kind.node_finder_categories(user_state);
+
+                    if kind_categories.is_empty() {
+                        orphan_kinds.push(kind);
+                    } else {
+                        for category in kind_categories {
+                            categories.entry(category.name()).or_default().push(kind);
+                        }
+                    }
+                }
 
                 Frame::default()
                     .inner_margin(vec2(10.0, 10.0))
@@ -75,18 +94,51 @@ where
                             .max_height(max_height)
                             .show(ui, |ui| {
                                 ui.set_width(scroll_area_width);
-                                for kind in all_kinds.all_kinds() {
+                                for (category, kinds) in categories {
+                                    let filtered_kinds: Vec<_> = kinds
+                                        .into_iter()
+                                        .map(|kind| {
+                                            let kind_name =
+                                                kind.node_finder_label(user_state).to_string();
+                                            (kind, kind_name)
+                                        })
+                                        .filter(|(_kind, kind_name)| {
+                                            kind_name
+                                                .to_lowercase()
+                                                .contains(self.query.to_lowercase().as_str())
+                                        })
+                                        .collect();
+
+                                    if !filtered_kinds.is_empty() {
+                                        let default_open = !self.query.is_empty();
+
+                                        CollapsingHeader::new(&category)
+                                            .default_open(default_open)
+                                            .open(update_open.then_some(default_open))
+                                            .show(ui, |ui| {
+                                                for (kind, kind_name) in filtered_kinds {
+                                                    if ui
+                                                        .selectable_label(false, kind_name)
+                                                        .clicked()
+                                                    {
+                                                        submitted_archetype = Some(kind.clone());
+                                                    } else if query_submit {
+                                                        submitted_archetype = Some(kind.clone());
+                                                        query_submit = false;
+                                                    }
+                                                }
+                                            });
+                                    }
+                                }
+
+                                for kind in orphan_kinds {
                                     let kind_name = kind.node_finder_label(user_state).to_string();
-                                    if kind_name
-                                        .to_lowercase()
-                                        .contains(self.query.to_lowercase().as_str())
-                                    {
-                                        if ui.selectable_label(false, kind_name).clicked() {
-                                            submitted_archetype = Some(kind);
-                                        } else if query_submit {
-                                            submitted_archetype = Some(kind);
-                                            query_submit = false;
-                                        }
+
+                                    if ui.selectable_label(false, kind_name).clicked() {
+                                        submitted_archetype = Some(kind.clone());
+                                    } else if query_submit {
+                                        submitted_archetype = Some(kind.clone());
+                                        query_submit = false;
                                     }
                                 }
                             });
