@@ -444,7 +444,11 @@ impl eframe::App for NodeGraphExample {
                     egui::Align2::LEFT_TOP,
                     text,
                     TextStyle::Button.resolve(&ctx.style()),
-                    egui::Color32::WHITE,
+                    if ctx.style().visuals.dark_mode {
+                        egui::Color32::WHITE
+                    } else {
+                        egui::Color32::BLACK
+                    },
                 );
             } else {
                 self.user_state.active_node = None;
