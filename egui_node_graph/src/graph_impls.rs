@@ -1,3 +1,5 @@
+use std::num::NonZeroU32;
+
 use super::*;
 
 impl<NodeData, DataType, ValueType> Graph<NodeData, DataType, ValueType> {
@@ -32,6 +34,30 @@ impl<NodeData, DataType, ValueType> Graph<NodeData, DataType, ValueType> {
         node_id
     }
 
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_wide_input_param(
+        &mut self,
+        node_id: NodeId,
+        name: String,
+        typ: DataType,
+        value: ValueType,
+        kind: InputParamKind,
+        max_connections: Option<NonZeroU32>,
+        shown_inline: bool,
+    ) -> InputId {
+        let input_id = self.inputs.insert_with_key(|input_id| InputParam {
+            id: input_id,
+            typ,
+            value,
+            kind,
+            node: node_id,
+            max_connections,
+            shown_inline,
+        });
+        self.nodes[node_id].inputs.push((name, input_id));
+        input_id
+    }
+
     pub fn add_input_param(
         &mut self,
         node_id: NodeId,
@@ -41,16 +67,15 @@ impl<NodeData, DataType, ValueType> Graph<NodeData, DataType, ValueType> {
         kind: InputParamKind,
         shown_inline: bool,
     ) -> InputId {
-        let input_id = self.inputs.insert_with_key(|input_id| InputParam {
-            id: input_id,
+        self.add_wide_input_param(
+            node_id,
+            name,
             typ,
             value,
             kind,
-            node: node_id,
+            NonZeroU32::new(1),
             shown_inline,
-        });
-        self.nodes[node_id].inputs.push((name, input_id));
-        input_id
+        )
     }
 
     pub fn remove_input_param(&mut self, param: InputId) {
@@ -64,7 +89,9 @@ impl<NodeData, DataType, ValueType> Graph<NodeData, DataType, ValueType> {
         let node = self[param].node;
         self[node].outputs.retain(|(_, id)| *id != param);
         self.outputs.remove(param);
-        self.connections.retain(|_, o| *o != param);
+        for (_, conns) in &mut self.connections {
+            conns.retain(|o| *o != param);
+        }
     }
 
     pub fn add_output_param(&mut self, node_id: NodeId, name: String, typ: DataType) -> OutputId {
@@ -87,14 +114,16 @@ impl<NodeData, DataType, ValueType> Graph<NodeData, DataType, ValueType> {
     pub fn remove_node(&mut self, node_id: NodeId) -> (Node<NodeData>, Vec<(InputId, OutputId)>) {
         let mut disconnect_events = vec![];
 
-        self.connections.retain(|i, o| {
-            if self.outputs[*o].node == node_id || self.inputs[i].node == node_id {
-                disconnect_events.push((i, *o));
-                false
-            } else {
-                true
-            }
-        });
+        for (i, conns) in &mut self.connections {
+            conns.retain(|o| {
+                if self.outputs[*o].node == node_id || self.inputs[i].node == node_id {
+                    disconnect_events.push((i, *o));
+                    false
+                } else {
+                    true
+                }
+            });
+        }
 
         // NOTE: Collect is needed because we can't borrow the input ids while
         // we remove them inside the loop.
@@ -109,24 +138,72 @@ impl<NodeData, DataType, ValueType> Graph<NodeData, DataType, ValueType> {
         (removed_node, disconnect_events)
     }
 
-    pub fn remove_connection(&mut self, input_id: InputId) -> Option<OutputId> {
-        self.connections.remove(input_id)
+    pub fn remove_connection(&mut self, input_id: InputId, output_id: OutputId) -> bool {
+        self.connections
+            .get_mut(input_id)
+            .map(|conns| {
+                let old_size = conns.len();
+                conns.retain(|id| id != &output_id);
+
+                // connection removed if `conn` size changes
+                old_size != conns.len()
+            })
+            .unwrap_or(false)
     }
 
     pub fn iter_nodes(&self) -> impl Iterator<Item = NodeId> + '_ {
         self.nodes.iter().map(|(id, _)| id)
     }
 
-    pub fn add_connection(&mut self, output: OutputId, input: InputId) {
-        self.connections.insert(input, output);
+    pub fn add_connection(&mut self, output: OutputId, input: InputId, pos: usize) {
+        if !self.connections.contains_key(input) {
+            self.connections.insert(input, Vec::default());
+        }
+
+        let max_connections = self
+            .get_input(input)
+            .max_connections
+            .map(NonZeroU32::get)
+            .unwrap_or(std::u32::MAX) as usize;
+        let already_in = self.connections[input].contains(&output);
+
+        // connecting twice to the same port is a no-op
+        // even for wide ports.
+        if already_in {
+            return;
+        }
+
+        if self.connections[input].len() == max_connections {
+            // if full, replace the connected output
+            self.connections[input][pos] = output;
+        } else {
+            // otherwise, insert at a selected position
+            self.connections[input].insert(pos, output);
+        }
+    }
+
+    pub fn iter_connection_groups(&self) -> impl Iterator<Item = (InputId, Vec<OutputId>)> + '_ {
+        self.connections.iter().map(|(i, conns)| (i, conns.clone()))
     }
 
     pub fn iter_connections(&self) -> impl Iterator<Item = (InputId, OutputId)> + '_ {
-        self.connections.iter().map(|(o, i)| (o, *i))
+        self.iter_connection_groups()
+            .flat_map(|(i, conns)| conns.into_iter().map(move |o| (i, o)))
+    }
+
+    pub fn connections(&self, input: InputId) -> Vec<OutputId> {
+        self.connections.get(input).cloned().unwrap_or_default()
     }
 
     pub fn connection(&self, input: InputId) -> Option<OutputId> {
-        self.connections.get(input).copied()
+        let is_limit_1 = self.get_input(input).max_connections == NonZeroU32::new(1);
+        let connections = self.connections(input);
+
+        if is_limit_1 && connections.len() == 1 {
+            connections.into_iter().next()
+        } else {
+            None
+        }
     }
 
     pub fn any_param_type(&self, param: AnyParameterId) -> Result<&DataType, EguiGraphError> {

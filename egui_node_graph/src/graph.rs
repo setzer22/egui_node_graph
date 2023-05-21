@@ -1,3 +1,5 @@
+use std::num::NonZeroU32;
+
 use super::*;
 
 #[cfg(feature = "persistence")]
@@ -55,6 +57,8 @@ pub struct InputParam<DataType, ValueType> {
     pub kind: InputParamKind,
     /// Back-reference to the node containing this parameter.
     pub node: NodeId,
+    /// How many connections can be made with this input. `None` means no limit.
+    pub max_connections: Option<NonZeroU32>,
     /// When true, the node is shown inline inside the node graph.
     #[cfg_attr(feature = "persistence", serde(default = "shown_inline_default"))]
     pub shown_inline: bool,
@@ -87,5 +91,5 @@ pub struct Graph<NodeData, DataType, ValueType> {
     pub outputs: SlotMap<OutputId, OutputParam<DataType>>,
     // Connects the input of a node, to the output of its predecessor that
     // produces it
-    pub connections: SecondaryMap<InputId, OutputId>,
+    pub connections: SecondaryMap<InputId, Vec<OutputId>>,
 }
