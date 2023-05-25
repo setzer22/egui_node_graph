@@ -15,7 +15,7 @@ workspace = ".."
 persistence = ["serde", "slotmap/serde", "smallvec/serde", "egui/persistence"]
 
 [dependencies]
-egui = { git = "https://github.com/emilk/egui", rev = "3d6a15f" }
+egui = { version = "0.22" }
 slotmap = { version = "1.0" }
 smallvec = { version = "1.10.0" }
 serde = { version = "1.0", optional = true, features = ["derive"] }
