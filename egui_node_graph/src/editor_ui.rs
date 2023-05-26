@@ -585,6 +585,7 @@ where
                         let node_responses = value.value_widget_connected(
                             &param_name,
                             self.node_id,
+                            param_id,
                             ui,
                             user_state,
                             &self.graph[self.node_id].user_data,
@@ -595,6 +596,7 @@ where
                         let node_responses = value.value_widget(
                             &param_name,
                             self.node_id,
+                            param_id,
                             ui,
                             user_state,
                             &self.graph[self.node_id].user_data,
@@ -624,7 +626,14 @@ where
                 responses.extend(
                     self.graph[self.node_id]
                         .user_data
-                        .output_ui(ui, self.node_id, self.graph, user_state, &param_name)
+                        .output_ui(
+                            ui,
+                            self.node_id,
+                            self.graph,
+                            user_state,
+                            param_id,
+                            &param_name,
+                        )
                         .into_iter(),
                 );
 
