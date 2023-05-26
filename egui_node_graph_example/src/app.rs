@@ -286,6 +286,7 @@ impl WidgetValueTrait for MyValueType {
         &mut self,
         param_name: &str,
         _node_id: NodeId,
+        _param_id: InputId,
         ui: &mut egui::Ui,
         _user_state: &mut MyGraphState,
         _node_data: &MyNodeData,

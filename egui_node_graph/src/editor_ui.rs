@@ -585,6 +585,7 @@ where
                         let node_responses = value.value_widget_connected(
                             &param_name,
                             self.node_id,
+                            param_id,
                             ui,
                             user_state,
                             &self.graph[self.node_id].user_data,
@@ -595,6 +596,7 @@ where
                         let node_responses = value.value_widget(
                             &param_name,
                             self.node_id,
+                            param_id,
                             ui,
                             user_state,
                             &self.graph[self.node_id].user_data,
