@@ -624,7 +624,14 @@ where
                 responses.extend(
                     self.graph[self.node_id]
                         .user_data
-                        .output_ui(ui, self.node_id, self.graph, user_state, &param_name)
+                        .output_ui(
+                            ui,
+                            self.node_id,
+                            self.graph,
+                            user_state,
+                            param_id,
+                            &param_name,
+                        )
                         .into_iter(),
                 );
 

@@ -136,6 +136,7 @@ where
         _node_id: NodeId,
         _graph: &Graph<Self, Self::DataType, Self::ValueType>,
         _user_state: &mut Self::UserState,
+        _param_id: OutputId,
         param_name: &str,
     ) -> Vec<NodeResponse<Self::Response, Self>>
     where
