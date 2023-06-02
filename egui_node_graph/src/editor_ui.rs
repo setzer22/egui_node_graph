@@ -111,6 +111,7 @@ where
         ui: &mut Ui,
         all_kinds: impl NodeTemplateIter<Item = NodeTemplate>,
         user_state: &mut UserState,
+        prepend_responses: Vec<NodeResponse<UserResponse, NodeData>>,
     ) -> GraphResponse<UserResponse, NodeData> {
         // This causes the graph editor to use as much free space as it can.
         // (so for windows it will use up to the resizeably set limit
@@ -130,7 +131,7 @@ where
 
         // The responses returned from node drawing have side effects that are best
         // executed at the end of this function.
-        let mut delayed_responses: Vec<NodeResponse<UserResponse, NodeData>> = vec![];
+        let mut delayed_responses: Vec<NodeResponse<UserResponse, NodeData>> = prepend_responses;
 
         // Used to detect when the background was clicked
         let mut click_on_background = false;
