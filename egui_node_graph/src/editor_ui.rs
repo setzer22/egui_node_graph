@@ -195,7 +195,9 @@ where
                     );
                     self.node_positions.insert(
                         new_node,
-                        cursor_pos - self.pan_zoom.pan - editor_rect.min.to_vec2(),
+                        node_finder.position.unwrap_or(cursor_pos)
+                            - self.pan_zoom.pan
+                            - editor_rect.min.to_vec2(),
                     );
                     self.node_order.push(new_node);
 
