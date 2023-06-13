@@ -59,7 +59,7 @@ impl<NodeData, DataType, ValueType, NodeKind, UserState> Default
     }
 }
 
-#[cfg_attr(feature = "persistence")]
+#[cfg(feature = "persistence")]
 fn _default_clip_rect() -> Rect {
     Rect::NOTHING
 }
