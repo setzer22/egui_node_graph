@@ -37,9 +37,9 @@ pub struct GraphEditorState<NodeData, DataType, ValueType, NodeTemplate, UserSta
 impl<NodeData, DataType, ValueType, NodeKind, UserState>
     GraphEditorState<NodeData, DataType, ValueType, NodeKind, UserState>
 {
-    pub fn new(style: &Arc<Style>, default_zoom: f32) -> Self {
+    pub fn new(default_zoom: f32) -> Self {
         Self {
-            pan_zoom: PanZoom::new(style, default_zoom),
+            pan_zoom: PanZoom::new(default_zoom),
             ..Default::default()
         }
     }
@@ -75,8 +75,6 @@ pub struct PanZoom {
     #[cfg_attr(feature = "persistence", serde(skip, default = "_default_clip_rect"))]
     pub clip_rect: Rect,
     #[cfg_attr(feature = "persistence", serde(skip, default))]
-    pub default_style: Arc<Style>,
-    #[cfg_attr(feature = "persistence", serde(skip, default))]
     pub zoomed_style: Arc<Style>,
 }
 
@@ -86,29 +84,25 @@ impl Default for PanZoom {
             pan: Vec2::ZERO,
             zoom: 1.0,
             clip_rect: Rect::NOTHING,
-            // Overridden when zooming
-            default_style: Default::default(),
             zoomed_style: Default::default(),
         }
     }
 }
 
 impl PanZoom {
-    pub fn new(style: &Arc<Style>, zoom: f32) -> PanZoom {
+    pub fn new(zoom: f32) -> PanZoom {
         PanZoom {
             pan: Vec2::ZERO,
             zoom,
             clip_rect: Rect::NOTHING,
-            default_style: style.clone(),
-            zoomed_style: style.clone(),
+            zoomed_style: Default::default(),
         }
     }
 
     pub fn zoom(&mut self, clip_rect: Rect, style: &Arc<Style>, zoom_delta: f32) {
         self.clip_rect = clip_rect;
-        self.default_style = style.clone();
         let new_zoom = (self.zoom * zoom_delta).clamp(MIN_ZOOM, MAX_ZOOM);
-        self.zoomed_style = Arc::new(self.default_style.scaled(new_zoom));
+        self.zoomed_style = Arc::new(style.scaled(new_zoom));
         self.zoom = new_zoom;
     }
 }

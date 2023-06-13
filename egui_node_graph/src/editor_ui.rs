@@ -124,9 +124,8 @@ where
         }
 
         // Render graph zoomed
-        let default_style = self.pan_zoom.default_style.clone();
         let zoomed_style = self.pan_zoom.zoomed_style.clone();
-        let graph_response = show_zoomed(default_style, zoomed_style, ui, |ui| {
+        let graph_response = show_zoomed(ui.style().clone(), zoomed_style, ui, |ui| {
             self.draw_graph_editor_inside_zoom(ui, all_kinds, user_state, prepend_responses)
         });
 
