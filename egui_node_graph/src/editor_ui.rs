@@ -169,7 +169,7 @@ where
         }
     }
 
-    pub fn draw_graph_editor_inside_zoom(
+    fn draw_graph_editor_inside_zoom(
         &mut self,
         ui: &mut Ui,
         all_kinds: impl NodeTemplateIter<Item = NodeTemplate>,
