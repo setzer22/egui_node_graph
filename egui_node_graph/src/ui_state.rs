@@ -76,6 +76,8 @@ pub struct PanZoom {
     pub clip_rect: Rect,
     #[cfg_attr(feature = "persistence", serde(skip, default))]
     pub zoomed_style: Arc<Style>,
+    #[cfg_attr(feature = "persistence", serde(skip, default))]
+    pub started: bool,
 }
 
 impl Default for PanZoom {
@@ -85,17 +87,20 @@ impl Default for PanZoom {
             zoom: 1.0,
             clip_rect: Rect::NOTHING,
             zoomed_style: Default::default(),
+            started: false,
         }
     }
 }
 
 impl PanZoom {
     pub fn new(zoom: f32) -> PanZoom {
+        let style: Style = Default::default();
         PanZoom {
             pan: Vec2::ZERO,
             zoom,
             clip_rect: Rect::NOTHING,
-            zoomed_style: Default::default(),
+            zoomed_style: Arc::new(style.scaled(1.0)),
+            started: false,
         }
     }
 

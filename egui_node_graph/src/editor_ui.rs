@@ -114,6 +114,12 @@ where
         prepend_responses: Vec<NodeResponse<UserResponse, NodeData>>,
     ) -> GraphResponse<UserResponse, NodeData> {
         let clip_rect = ui.clip_rect();
+        // Zoom may have never taken place, so ensure we use parent style
+        if !self.pan_zoom.started {
+            self.zoom(ui, 1.0);
+            self.pan_zoom.started = true;
+        }
+
         // Zoom only within area where graph is shown
         if ui.rect_contains_pointer(clip_rect) {
             let scroll_delta = ui.input(|i| i.scroll_delta.y);
