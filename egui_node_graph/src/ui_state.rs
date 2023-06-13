@@ -1,5 +1,5 @@
 use super::*;
-use egui::{Style, Ui, Vec2};
+use egui::{Rect, Style, Ui, Vec2};
 use std::marker::PhantomData;
 use std::sync::Arc;
 
@@ -65,6 +65,8 @@ pub struct PanZoom {
     pub pan: Vec2,
     pub zoom: f32,
     #[cfg_attr(feature = "persistence", serde(skip, default))]
+    pub clip_rect: Rect,
+    #[cfg_attr(feature = "persistence", serde(skip, default))]
     pub default_style: Arc<Style>,
     #[cfg_attr(feature = "persistence", serde(skip, default))]
     pub zoomed_style: Arc<Style>,
@@ -75,6 +77,7 @@ impl Default for PanZoom {
         PanZoom {
             pan: Vec2::ZERO,
             zoom: 1.0,
+            clip_rect: Rect::NOTHING,
             // Overridden when zooming
             default_style: Default::default(),
             zoomed_style: Default::default(),
@@ -87,12 +90,14 @@ impl PanZoom {
         PanZoom {
             pan: Vec2::ZERO,
             zoom,
+            clip_rect: Rect::NOTHING,
             default_style: style.clone(),
             zoomed_style: style.clone(),
         }
     }
 
-    pub fn zoom(&mut self, style: &Arc<Style>, zoom_delta: f32) {
+    pub fn zoom(&mut self, clip_rect: Rect, style: &Arc<Style>, zoom_delta: f32) {
+        self.clip_rect = clip_rect;
         self.default_style = style.clone();
         let new_zoom = (self.zoom * zoom_delta).clamp(0.1, 10.);
         self.zoomed_style = Arc::new(self.default_style.scaled(new_zoom));

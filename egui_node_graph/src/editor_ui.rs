@@ -119,19 +119,7 @@ where
             let scroll_delta = ui.input(|i| i.scroll_delta.y);
             if scroll_delta != 0.0 {
                 let zoom_delta = (scroll_delta * 0.002).exp();
-                // Update zoom, and styles
-                self.pan_zoom.zoom(ui.style(), zoom_delta);
-                // Update node positions, zoom towards center
-                let half_size = clip_rect.size() / 2.0;
-                for (_id, node_pos) in self.node_positions.iter_mut() {
-                    // 1. Get node local position (relative to origo)
-                    let local_pos = node_pos.to_vec2() - half_size + self.pan_zoom.pan;
-                    // 2. Scale local position by zoom delta
-                    let scaled_local_pos = (local_pos * zoom_delta).to_pos2();
-                    // 3. Transform back to global position
-                    *node_pos = scaled_local_pos + half_size - self.pan_zoom.pan;
-                    // This way we can retain pan untouched when zooming :)
-                }
+                self.zoom(ui, zoom_delta);
             }
         }
 
@@ -143,6 +131,37 @@ where
         });
 
         graph_response
+    }
+
+    /// Reset zoom to 1.0
+    pub fn reset_zoom(&mut self, ui: &Ui) {
+        let new_zoom = 1.0 / self.pan_zoom.zoom;
+        self.zoom(ui, new_zoom);
+    }
+
+    /// Zoom within the where you call `draw_graph_editor`. Use values like 1.01, or 0.99 to zoom.
+    /// For example: `let zoom_delta = (scroll_delta * 0.002).exp();`
+    pub fn zoom(&mut self, ui: &Ui, zoom_delta: f32) {
+        // Update zoom, and styles
+        let zoom_before = self.pan_zoom.zoom;
+        self.pan_zoom.zoom(ui.clip_rect(), ui.style(), zoom_delta);
+        if zoom_before != self.pan_zoom.zoom {
+            self.update_node_positions_after_zoom(zoom_delta);
+        }
+    }
+
+    fn update_node_positions_after_zoom(&mut self, zoom_delta: f32) {
+        // Update node positions, zoom towards center
+        let half_size = self.pan_zoom.clip_rect.size() / 2.0;
+        for (_id, node_pos) in self.node_positions.iter_mut() {
+            // 1. Get node local position (relative to origo)
+            let local_pos = node_pos.to_vec2() - half_size + self.pan_zoom.pan;
+            // 2. Scale local position by zoom delta
+            let scaled_local_pos = (local_pos * zoom_delta).to_pos2();
+            // 3. Transform back to global position
+            *node_pos = scaled_local_pos + half_size - self.pan_zoom.pan;
+            // This way we can retain pan untouched when zooming :)
+        }
     }
 
     pub fn draw_graph_editor_inside_zoom(
