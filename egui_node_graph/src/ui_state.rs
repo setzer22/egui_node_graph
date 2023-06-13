@@ -1,15 +1,11 @@
 use super::*;
+use egui::{Style, Ui, Vec2};
 use std::marker::PhantomData;
+use std::sync::Arc;
 
+use crate::scale::Scale;
 #[cfg(feature = "persistence")]
 use serde::{Deserialize, Serialize};
-
-#[derive(Default, Copy, Clone)]
-#[cfg_attr(feature = "persistence", derive(Serialize, Deserialize))]
-pub struct PanZoom {
-    pub pan: egui::Vec2,
-    pub zoom: f32,
-}
 
 #[derive(Clone)]
 #[cfg_attr(feature = "persistence", derive(Serialize, Deserialize))]
@@ -38,12 +34,9 @@ pub struct GraphEditorState<NodeData, DataType, ValueType, NodeTemplate, UserSta
 impl<NodeData, DataType, ValueType, NodeKind, UserState>
     GraphEditorState<NodeData, DataType, ValueType, NodeKind, UserState>
 {
-    pub fn new(default_zoom: f32) -> Self {
+    pub fn new(style: &Arc<Style>, default_zoom: f32) -> Self {
         Self {
-            pan_zoom: PanZoom {
-                pan: egui::Vec2::ZERO,
-                zoom: default_zoom,
-            },
+            pan_zoom: PanZoom::new(style, default_zoom),
             ..Default::default()
         }
     }
@@ -66,18 +59,59 @@ impl<NodeData, DataType, ValueType, NodeKind, UserState> Default
     }
 }
 
-impl PanZoom {
-    pub fn adjust_zoom(
-        &mut self,
-        zoom_delta: f32,
-        point: egui::Vec2,
-        zoom_min: f32,
-        zoom_max: f32,
-    ) {
-        let zoom_clamped = (self.zoom + zoom_delta).clamp(zoom_min, zoom_max);
-        let zoom_delta = zoom_clamped - self.zoom;
+#[derive(Clone)]
+#[cfg_attr(feature = "persistence", derive(Serialize, Deserialize))]
+pub struct PanZoom {
+    pub pan: Vec2,
+    pub zoom: f32,
+    #[cfg_attr(feature = "persistence", serde(skip, default))]
+    pub default_style: Arc<Style>,
+    #[cfg_attr(feature = "persistence", serde(skip, default))]
+    pub zoomed_style: Arc<Style>,
+}
 
-        self.zoom += zoom_delta;
-        self.pan += point * zoom_delta;
+impl Default for PanZoom {
+    fn default() -> Self {
+        PanZoom {
+            pan: Vec2::ZERO,
+            zoom: 1.0,
+            // Overridden when zooming
+            default_style: Default::default(),
+            zoomed_style: Default::default(),
+        }
     }
+}
+
+impl PanZoom {
+    pub fn new(style: &Arc<Style>, zoom: f32) -> PanZoom {
+        PanZoom {
+            pan: Vec2::ZERO,
+            zoom,
+            default_style: style.clone(),
+            zoomed_style: style.clone(),
+        }
+    }
+
+    pub fn zoom(&mut self, style: &Arc<Style>, zoom_delta: f32) {
+        self.default_style = style.clone();
+        let new_zoom = (self.zoom * zoom_delta).clamp(0.1, 10.);
+        self.zoomed_style = Arc::new(self.default_style.scaled(new_zoom));
+        self.zoom = new_zoom;
+    }
+}
+
+pub fn show_zoomed<R, F>(
+    default_style: Arc<Style>,
+    zoomed_style: Arc<Style>,
+    ui: &mut Ui,
+    add_content: F,
+) -> R
+where
+    F: FnOnce(&mut Ui) -> R,
+{
+    *ui.style_mut() = (*zoomed_style).clone();
+    let response = add_content(ui);
+    *ui.style_mut() = (*default_style).clone();
+
+    response
 }
