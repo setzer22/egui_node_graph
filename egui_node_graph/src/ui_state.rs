@@ -59,12 +59,17 @@ impl<NodeData, DataType, ValueType, NodeKind, UserState> Default
     }
 }
 
+#[cfg_attr(feature = "persistence")]
+fn _default_clip_rect() -> Rect {
+    Rect::NOTHING
+}
+
 #[derive(Clone)]
 #[cfg_attr(feature = "persistence", derive(Serialize, Deserialize))]
 pub struct PanZoom {
     pub pan: Vec2,
     pub zoom: f32,
-    #[cfg_attr(feature = "persistence", serde(skip, default))]
+    #[cfg_attr(feature = "persistence", serde(skip, default = "_default_clip_rect"))]
     pub clip_rect: Rect,
     #[cfg_attr(feature = "persistence", serde(skip, default))]
     pub default_style: Arc<Style>,
