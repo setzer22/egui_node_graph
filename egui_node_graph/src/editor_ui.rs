@@ -581,7 +581,7 @@ where
         ui: &mut Ui,
         user_state: &mut UserState,
     ) -> Vec<NodeResponse<UserResponse, NodeData>> {
-        let margin = egui::vec2(15.0, 5.0);
+        let margin = egui::vec2(15.0, 5.0) * pan_zoom.zoom;
         let mut responses = Vec::<NodeResponse<UserResponse, NodeData>>::new();
 
         let background_color;
@@ -645,7 +645,7 @@ where
                         .top_bar_ui(ui, self.node_id, self.graph, user_state)
                         .into_iter(),
                 );
-                ui.add_space(8.0); // The size of the little cross icon
+                ui.add_space(8.0 * pan_zoom.zoom); // The size of the little cross icon
             });
             ui.add_space(margin.y);
             title_height = ui.min_size().y;
@@ -777,7 +777,7 @@ where
 
             // Check if the distance between the port and the mouse is the distance to connect
             let close_enough = if let Some(pointer_pos) = ui.ctx().pointer_hover_pos() {
-                port_rect.center().distance(pointer_pos) < DISTANCE_TO_CONNECT
+                port_rect.center().distance(pointer_pos) < DISTANCE_TO_CONNECT * pan_zoom.zoom
             } else {
                 false
             };
@@ -983,7 +983,7 @@ where
 
     fn close_button(pan_zoom: &PanZoom, ui: &mut Ui, node_rect: Rect) -> Response {
         // Measurements
-        let margin = 8.0;
+        let margin = 8.0 * pan_zoom.zoom;
         let size = 10.0 * pan_zoom.zoom;
         let stroke_width = 2.0;
         let offs = margin + size / 2.0;
