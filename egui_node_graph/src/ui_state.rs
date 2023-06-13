@@ -7,6 +7,9 @@ use crate::scale::Scale;
 #[cfg(feature = "persistence")]
 use serde::{Deserialize, Serialize};
 
+const MIN_ZOOM: f32 = 0.2;
+const MAX_ZOOM: f32 = 2.0;
+
 #[derive(Clone)]
 #[cfg_attr(feature = "persistence", derive(Serialize, Deserialize))]
 pub struct GraphEditorState<NodeData, DataType, ValueType, NodeTemplate, UserState> {
@@ -104,7 +107,7 @@ impl PanZoom {
     pub fn zoom(&mut self, clip_rect: Rect, style: &Arc<Style>, zoom_delta: f32) {
         self.clip_rect = clip_rect;
         self.default_style = style.clone();
-        let new_zoom = (self.zoom * zoom_delta).clamp(0.1, 10.);
+        let new_zoom = (self.zoom * zoom_delta).clamp(MIN_ZOOM, MAX_ZOOM);
         self.zoomed_style = Arc::new(self.default_style.scaled(new_zoom));
         self.zoom = new_zoom;
     }

@@ -887,7 +887,7 @@ where
         // does not support drawing rectangles with asymmetrical round corners.
 
         let (shape, outline) = {
-            let rounding_radius = 4.0;
+            let rounding_radius = 4.0 * pan_zoom.zoom;
             let rounding = Rounding::same(rounding_radius);
 
             let titlebar_height = title_height + margin.y;
@@ -928,7 +928,7 @@ where
             let node_rect = titlebar_rect.union(body_rect).union(bottom_body_rect);
             let outline = if self.selected {
                 Shape::Rect(RectShape {
-                    rect: node_rect.expand(1.0),
+                    rect: node_rect.expand(1.0 * pan_zoom.zoom),
                     rounding,
                     fill: Color32::WHITE.lighten(0.8),
                     stroke: Stroke::NONE,
