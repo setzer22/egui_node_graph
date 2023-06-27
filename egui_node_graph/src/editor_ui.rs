@@ -691,6 +691,8 @@ where
                         responses.extend(node_responses.into_iter().map(NodeResponse::User));
                     }
 
+                    self.graph[param_id].value = value;
+
                     self.graph[self.node_id].user_data.separator(
                         ui,
                         self.node_id,
@@ -698,8 +700,6 @@ where
                         self.graph,
                         user_state,
                     );
-
-                    self.graph[param_id].value = value;
 
                     let height_after = ui.min_rect().bottom();
                     input_port_heights.push((height_before + height_after) / 2.0);
