@@ -151,7 +151,8 @@ where
         let zoom_before = self.pan_zoom.zoom;
         self.pan_zoom.zoom(ui.clip_rect(), ui.style(), zoom_delta);
         if zoom_before != self.pan_zoom.zoom {
-            self.update_node_positions_after_zoom(zoom_delta);
+            let actual_delta = self.pan_zoom.zoom / zoom_before;
+            self.update_node_positions_after_zoom(actual_delta);
         }
     }
 
