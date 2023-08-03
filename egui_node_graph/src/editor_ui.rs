@@ -530,7 +530,7 @@ fn draw_connection(
         color,
     };
 
-    let control_scale = ((dst_pos.x - src_pos.x) / 2.0).max(30.0);
+    let control_scale = ((dst_pos.x - src_pos.x) * pan_zoom.zoom / 2.0).max(30.0 * pan_zoom.zoom);
     let src_control = src_pos + Vec2::X * control_scale;
     let dst_control = dst_pos - Vec2::X * control_scale;
 
@@ -599,7 +599,8 @@ where
             text_color = color_from_hex("#505050").unwrap();
         }
 
-        ui.visuals_mut().widgets.noninteractive.fg_stroke = Stroke::new(2.0, text_color);
+        ui.visuals_mut().widgets.noninteractive.fg_stroke =
+            Stroke::new(2.0 * pan_zoom.zoom, text_color);
 
         // Preallocate shapes to paint below contents
         let outline_shape = ui.painter().add(Shape::Noop);
