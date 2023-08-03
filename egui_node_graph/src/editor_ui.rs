@@ -606,7 +606,10 @@ where
         let outline_shape = ui.painter().add(Shape::Noop);
         let background_shape = ui.painter().add(Shape::Noop);
 
-        let outer_rect_bounds = ui.available_rect_before_wrap();
+        let mut outer_rect_bounds = ui.available_rect_before_wrap();
+        // Scale hack, otherwise some (larger) rects expand too much when zoomed out
+        outer_rect_bounds.max.x =
+            outer_rect_bounds.min.x + outer_rect_bounds.width() * pan_zoom.zoom;
 
         let mut inner_rect = outer_rect_bounds.shrink2(margin);
 
