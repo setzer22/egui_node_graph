@@ -2,6 +2,7 @@ use std::{borrow::Cow, collections::HashMap};
 
 use eframe::egui::{self, DragValue, TextStyle};
 use egui_node_graph::*;
+//use ecolor::Color32;
 
 // ========= First, define your user data types =============
 
@@ -103,10 +104,10 @@ pub struct MyGraphState {
 
 // A trait for the data types, to tell the library how to display them
 impl DataTypeTrait<MyGraphState> for MyDataType {
-    fn data_type_color(&self, _user_state: &mut MyGraphState) -> egui::Color32 {
+    fn data_type_color(&self, _user_state: &mut MyGraphState) -> ecolor::Color32 {
         match self {
-            MyDataType::Scalar => egui::Color32::from_rgb(38, 109, 211),
-            MyDataType::Vec2 => egui::Color32::from_rgb(238, 207, 109),
+            MyDataType::Scalar => ecolor::Color32::from_rgb(38, 109, 211),
+            MyDataType::Vec2 => ecolor::Color32::from_rgb(238, 207, 109),
         }
     }
 

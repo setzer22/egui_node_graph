@@ -32,6 +32,7 @@ pub struct GraphEditorState<NodeData, DataType, ValueType, NodeTemplate, UserSta
     pub node_finder: Option<NodeFinder<NodeTemplate>>,
     /// The panning of the graph viewport.
     pub pan_zoom: PanZoom,
+    #[cfg_attr(feature = "persistence", serde(skip))]
     pub _user_state: PhantomData<fn() -> UserState>,
 }
 
