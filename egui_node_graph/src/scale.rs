@@ -87,7 +87,9 @@ impl Scale for Style {
         self.spacing.icon_spacing *= amount;
         self.spacing.tooltip_width *= amount;
         self.spacing.combo_height *= amount;
-        self.spacing.scroll_bar_width *= amount;
+        self.spacing.scroll.bar_width *= amount;
+        self.spacing.scroll.floating_allocated_width *= amount;
+        self.spacing.scroll.floating_width *= amount;
 
         self.interaction.resize_grab_radius_side *= amount;
         self.interaction.resize_grab_radius_corner *= amount;
@@ -101,7 +103,7 @@ impl Scale for Style {
         self.visuals.selection.stroke.scale(amount);
 
         self.visuals.resize_corner_size *= amount;
-        self.visuals.text_cursor_width *= amount;
+        self.visuals.text_cursor.width *= amount;
         self.visuals.clip_rect_margin *= amount;
         self.visuals.window_rounding.scale(amount);
         self.visuals.window_shadow.scale(amount);
