@@ -15,8 +15,8 @@ workspace = ".."
 persistence = ["serde", "slotmap/serde", "smallvec/serde", "egui/persistence"]
 
 [dependencies]
-egui = { version = "0.21.0" }
+egui = { version = "0.24.0" }
 slotmap = { version = "1.0" }
-smallvec = { version = "1.10.0" }
+smallvec = { version = "1.11.2" }
 serde = { version = "1.0", optional = true, features = ["derive"] }
 thiserror = "1.0"
