@@ -184,7 +184,12 @@ where
         if let Some(ref mut node_finder) = self.node_finder {
             let mut node_finder_area = Area::new("node_finder").order(Order::Foreground);
             if let Some(pos) = node_finder.position {
-                node_finder_area = node_finder_area.current_pos(pos);
+                let pos_x = if pos.x > ui.available_width() - 300. {
+                    pos.x - 300.
+                } else {
+                    pos.x
+                };
+                node_finder_area = node_finder_area.current_pos(pos2(pos_x, pos.y));
             }
             node_finder_area.show(ui.ctx(), |ui| {
                 if let Some(node_kind) = node_finder.show(ui, all_kinds, user_state) {
