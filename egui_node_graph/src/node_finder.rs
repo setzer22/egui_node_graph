@@ -52,6 +52,7 @@ where
         ui.visuals_mut().widgets.noninteractive.fg_stroke = Stroke::new(2.0, text_color);
 
         let frame = Frame::dark_canvas(ui.style())
+            .rounding(10.)
             .fill(background_color)
             .inner_margin(vec2(5.0, 5.0));
 
