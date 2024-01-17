@@ -113,6 +113,7 @@ where
         user_state: &mut UserState,
         prepend_responses: Vec<NodeResponse<UserResponse, NodeData>>,
     ) -> GraphResponse<UserResponse, NodeData> {
+        ui.set_clip_rect(ui.max_rect());
         let clip_rect = ui.clip_rect();
         // Zoom may have never taken place, so ensure we use parent style
         if !self.pan_zoom.started {
