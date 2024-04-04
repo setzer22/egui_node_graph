@@ -123,7 +123,7 @@ where
 
         // Zoom only within area where graph is shown
         if ui.rect_contains_pointer(clip_rect) {
-            let scroll_delta = ui.input(|i| i.scroll_delta.y);
+            let scroll_delta = ui.input(|i| i.smooth_scroll_delta.y);
             if scroll_delta != 0.0 {
                 let zoom_delta = (scroll_delta * 0.002).exp();
                 self.zoom(ui, zoom_delta);
@@ -187,7 +187,7 @@ where
         let cursor_pos = ui
             .ctx()
             .input(|i| i.pointer.hover_pos().unwrap_or(Pos2::ZERO));
-        let mut cursor_in_editor = resp.hovered();
+        let mut cursor_in_editor = resp.contains_pointer();
         let mut cursor_in_finder = false;
 
         // Gets filled with the node metrics as they are drawn
@@ -219,7 +219,7 @@ where
             click_on_background = true;
         } else if r.drag_started() {
             drag_started_on_background = true;
-        } else if r.drag_released() {
+        } else if r.drag_stopped() {
             drag_released_on_background = true;
         }
 
@@ -247,7 +247,7 @@ where
         /* Draw the node finder, if open */
         let mut should_close_node_finder = false;
         if let Some(ref mut node_finder) = self.node_finder {
-            let mut node_finder_area = Area::new("node_finder").order(Order::Foreground);
+            let mut node_finder_area = Area::new(Id::new("node_finder")).order(Order::Foreground);
             if let Some(pos) = node_finder.position {
                 node_finder_area = node_finder_area.current_pos(pos);
             }

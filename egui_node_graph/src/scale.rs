@@ -1,8 +1,5 @@
 use egui::epaint::Shadow;
-use egui::{
-    style::{Margin, WidgetVisuals},
-    Rounding, Stroke, Style, Vec2,
-};
+use egui::{style::WidgetVisuals, Margin, Rounding, Stroke, Style, Vec2};
 
 // Copied from https://github.com/gzp-crey/shine
 
@@ -52,7 +49,7 @@ impl Scale for Stroke {
 
 impl Scale for Shadow {
     fn scale(&mut self, amount: f32) {
-        self.extrusion *= amount.clamp(0.4, 1.);
+        self.spread *= amount.clamp(0.4, 1.);
     }
 }
 

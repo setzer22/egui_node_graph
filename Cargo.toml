@@ -1,5 +1,11 @@
 [workspace]
+
+resolver = "2"
+
 members = [
     "egui_node_graph",
     "egui_node_graph_example",
 ]
+
+[egui_node_graph_example.profile.release]
+opt-level = 2 # fast and small wasm
