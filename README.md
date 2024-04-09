@@ -6,6 +6,8 @@
 ![MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 [![unsafe forbidden](https://img.shields.io/badge/unsafe-forbidden-success.svg)](https://github.com/rust-secure-code/safety-dance/)
 
+**ARCHIVED REPOSITORY** This repository is now archived because of a variety of technical and political reasons that made me loose my motivation to continue contributing to the Rust community in my free time.
+
 ![Showcase image](showcase.png)
 
 **Egui node graph** is a featureful, customizable library to create node graph
