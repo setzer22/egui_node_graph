@@ -1,15 +1,14 @@
 use super::*;
+use egui::{Rect, Style, Ui, Vec2};
 use std::marker::PhantomData;
+use std::sync::Arc;
 
+use crate::scale::Scale;
 #[cfg(feature = "persistence")]
 use serde::{Deserialize, Serialize};
 
-#[derive(Default, Copy, Clone)]
-#[cfg_attr(feature = "persistence", derive(Serialize, Deserialize))]
-pub struct PanZoom {
-    pub pan: egui::Vec2,
-    pub zoom: f32,
-}
+const MIN_ZOOM: f32 = 0.2;
+const MAX_ZOOM: f32 = 2.0;
 
 #[derive(Clone)]
 #[cfg_attr(feature = "persistence", derive(Serialize, Deserialize))]
@@ -40,10 +39,7 @@ impl<NodeData, DataType, ValueType, NodeKind, UserState>
 {
     pub fn new(default_zoom: f32) -> Self {
         Self {
-            pan_zoom: PanZoom {
-                pan: egui::Vec2::ZERO,
-                zoom: default_zoom,
-            },
+            pan_zoom: PanZoom::new(default_zoom),
             ..Default::default()
         }
     }
@@ -66,18 +62,68 @@ impl<NodeData, DataType, ValueType, NodeKind, UserState> Default
     }
 }
 
-impl PanZoom {
-    pub fn adjust_zoom(
-        &mut self,
-        zoom_delta: f32,
-        point: egui::Vec2,
-        zoom_min: f32,
-        zoom_max: f32,
-    ) {
-        let zoom_clamped = (self.zoom + zoom_delta).clamp(zoom_min, zoom_max);
-        let zoom_delta = zoom_clamped - self.zoom;
+#[cfg(feature = "persistence")]
+fn _default_clip_rect() -> Rect {
+    Rect::NOTHING
+}
 
-        self.zoom += zoom_delta;
-        self.pan += point * zoom_delta;
+#[derive(Clone)]
+#[cfg_attr(feature = "persistence", derive(Serialize, Deserialize))]
+pub struct PanZoom {
+    pub pan: Vec2,
+    pub zoom: f32,
+    #[cfg_attr(feature = "persistence", serde(skip, default = "_default_clip_rect"))]
+    pub clip_rect: Rect,
+    #[cfg_attr(feature = "persistence", serde(skip, default))]
+    pub zoomed_style: Arc<Style>,
+    #[cfg_attr(feature = "persistence", serde(skip, default))]
+    pub started: bool,
+}
+
+impl Default for PanZoom {
+    fn default() -> Self {
+        PanZoom {
+            pan: Vec2::ZERO,
+            zoom: 1.0,
+            clip_rect: Rect::NOTHING,
+            zoomed_style: Default::default(),
+            started: false,
+        }
     }
+}
+
+impl PanZoom {
+    pub fn new(zoom: f32) -> PanZoom {
+        let style: Style = Default::default();
+        PanZoom {
+            pan: Vec2::ZERO,
+            zoom,
+            clip_rect: Rect::NOTHING,
+            zoomed_style: Arc::new(style.scaled(1.0)),
+            started: false,
+        }
+    }
+
+    pub fn zoom(&mut self, clip_rect: Rect, style: &Arc<Style>, zoom_delta: f32) {
+        self.clip_rect = clip_rect;
+        let new_zoom = (self.zoom * zoom_delta).clamp(MIN_ZOOM, MAX_ZOOM);
+        self.zoomed_style = Arc::new(style.scaled(new_zoom));
+        self.zoom = new_zoom;
+    }
+}
+
+pub fn show_zoomed<R, F>(
+    default_style: Arc<Style>,
+    zoomed_style: Arc<Style>,
+    ui: &mut Ui,
+    add_content: F,
+) -> R
+where
+    F: FnOnce(&mut Ui) -> R,
+{
+    *ui.style_mut() = (*zoomed_style).clone();
+    let response = add_content(ui);
+    *ui.style_mut() = (*default_style).clone();
+
+    response
 }
