@@ -1,5 +1,4 @@
 [workspace]
-members = [
-    "egui_node_graph",
-    "egui_node_graph_example",
-]
+exclude = [ "egui_node_graph_example" ]
+members = ["egui_node_graph"]
+
